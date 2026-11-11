@@ -8,6 +8,7 @@ import { LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '~/components/ui/button';
+import { api } from '~/lib/api';
 import { defaultAvatarForAddress } from '~/lib/avatars';
 import { nicknameFromAddress, shortAddress } from '~/lib/near/address';
 import { cn, errorHandler } from '~/lib/utils';
@@ -50,7 +51,10 @@ export const ConnectButton = () => {
         let nearProof;
         if (sessionUser?.walletAddress !== address) {
           try {
-            nearProof = (await signLoginMessage()) ?? undefined;
+            // The server issues the nonce so a signature can't be replayed.
+            const { nonce } = await api.loginNonce();
+            const bytes = Uint8Array.from(atob(nonce), (c) => c.charCodeAt(0));
+            nearProof = (await signLoginMessage(bytes)) ?? undefined;
           } catch (error) {
             console.warn('NEP-413 login signature skipped', error);
           }

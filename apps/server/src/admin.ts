@@ -11,7 +11,7 @@ function adminPassword() {
 export function adminToken() {
   return crypto
     .createHmac('sha256', adminPassword())
-    .update('midnight-poker-admin')
+    .update('dark-table-admin')
     .digest('hex');
 }
 

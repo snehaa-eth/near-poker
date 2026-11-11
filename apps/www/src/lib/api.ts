@@ -190,6 +190,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   me: () => request<SessionUser>('/auth/me'),
+  /** Server-issued one-time NEP-413 nonce (base64, 32 bytes, 5 min). */
+  loginNonce: () =>
+    request<{ nonce: string; expiresAt: number; message: string; recipient: string }>(
+      '/auth/nonce'
+    ),
   setNickname: (nickname: string) =>
     request<SessionUser>('/auth/nickname', {
       method: 'POST',

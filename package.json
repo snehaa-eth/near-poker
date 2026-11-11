@@ -1,5 +1,5 @@
 {
-  "name": "midnight-poker",
+  "name": "dark-table",
   "private": true,
   "scripts": {
     "build": "turbo build",
