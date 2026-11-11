@@ -100,6 +100,62 @@ gameEventSchema.index({ gameId: 1, createdAt: -1 });
 export const GameEventModel = mongoose.model('GameEvent', gameEventSchema);
 
 /**
+ * One record per provably-fair hand (INTERFACES.md §1/§4). `serverSeed`,
+ * `entropy` and `deckSeed` are secret until `revealed` — routes must filter.
+ * Card ids are poker-engine ids (0..51, createOrderedDeck order).
+ */
+const handSchema = new Schema(
+  {
+    handId: { type: String, required: true, unique: true },
+    gameId: { type: String, required: true, index: true },
+    seedHash: { type: String, required: true },
+    serverSeed: { type: String, required: true },
+    entropy: { type: [String], default: [] },
+    deckSeed: { type: String, required: true },
+    revealed: { type: Boolean, default: false },
+    complete: { type: Boolean, default: false },
+    seats: { type: Schema.Types.Mixed, default: [] },
+    community: { type: [Number], default: [] },
+    deltas: { type: Schema.Types.Mixed, default: {} },
+    ledgerPlayers: { type: [String], default: [] },
+    ledger: { type: String, default: 'memory' },
+    txs: { type: Schema.Types.Mixed, default: {} },
+    ledgerErrors: { type: [String], default: [] },
+  },
+  { timestamps: true }
+);
+handSchema.index({ gameId: 1, createdAt: -1 });
+
+export type HandSeat = {
+  seat: number;
+  playerId: string;
+  nickname: string;
+  holeCards: number[];
+};
+
+export type HandDoc = {
+  handId: string;
+  gameId: string;
+  seedHash: string;
+  serverSeed: string;
+  entropy: string[];
+  deckSeed: string;
+  revealed: boolean;
+  complete: boolean;
+  seats: HandSeat[];
+  community: number[];
+  deltas: Record<string, number>;
+  ledgerPlayers: string[];
+  ledger: string;
+  txs: { commit?: string; reveal?: string; settle?: string };
+  ledgerErrors: string[];
+  createdAt?: Date;
+  updatedAt?: Date;
+};
+
+export const HandModel = mongoose.model<HandDoc>('Hand', handSchema);
+
+/**
  * Per-player activity ledger (deposits, withdrawals, table play).
  * Profile history reads this collection with pagination — DB only.
  */

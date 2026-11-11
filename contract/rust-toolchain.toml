@@ -1,0 +1,8 @@
+# NEAR runtimes reject wasm produced by rustc > 1.86 (newer rustc enables wasm
+# features like bulk-memory by default). Pinning here makes `cargo test` and
+# `cargo near build` in table-vault/ use 1.86 automatically.
+# (near-sdk is pinned to 5.14.0 exactly: newer near-sdk imports
+#  global-contract host functions that the near-workspaces sandbox (nearcore 2.6.2) lacks.)
+[toolchain]
+channel = "1.86.0"
+targets = ["wasm32-unknown-unknown"]

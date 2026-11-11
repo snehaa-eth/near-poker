@@ -1,6 +1,18 @@
+import { randomUUID } from 'node:crypto';
+
+import { bytesToHex } from '@nli/poker-engine';
+
+import {
+  collectEntropy,
+  deckSeedFor,
+  ENTROPY_TIMEOUT_MS,
+  newServerSeed,
+} from './fairness.js';
+import { getLedger } from './ledger.js';
 import {
   createEmptyNlheLobby,
   joinNlheLobby,
+  nextHandPlayerOrder,
   listLobbySummary,
   makeJoinCode,
   stacksFromNlhe,
@@ -8,12 +20,14 @@ import {
   toNlhePublicView,
   applyNlheBet,
   applyNlheFold,
+  type HandFairnessState,
   type StoredGame,
 } from './poker-bridge.js';
 
 import {
   GameEventModel,
   GameModel,
+  HandModel,
   SessionModel,
   recordPlayerActivity,
 } from './db.js';
@@ -92,6 +106,7 @@ function normalizeState(state: StoredGame): StoredGame {
     maxPlayers: Math.min(6, Math.max(2, Math.floor(state.maxPlayers ?? 6))),
     nlhe: state.nlhe ?? null,
     nlheSettled: state.nlheSettled ?? false,
+    fairness: state.fairness ?? null,
   };
 }
 
@@ -144,6 +159,13 @@ async function save(
     !normalized.nlheSettled
   ) {
     normalized = await settleStacksToSessions(normalized);
+  }
+  if (
+    normalized.nlhe?.street === 'complete' &&
+    normalized.fairness &&
+    !normalized.fairness.revealed
+  ) {
+    normalized = await finalizeHand(normalized);
   }
   memory.set(normalized.gameId, normalized);
   await GameModel.findOneAndUpdate(
@@ -366,7 +388,13 @@ export async function getPublicState(
 ) {
   const state = await load(gameId);
   if (!state) return null;
-  return toNlhePublicView(state, viewerId);
+  const view = toNlhePublicView(state, viewerId);
+  if (view.fairness) {
+    const txs = txCache.get(view.fairness.handId);
+    if (txs?.commit && !view.fairness.committedTx) view.fairness.committedTx = txs.commit;
+    if (txs?.reveal && view.fairness.revealed) view.fairness.revealed.revealTx = txs.reveal;
+  }
+  return view;
 }
 
 type Mutator = (state: StoredGame) => StoredGame;
@@ -387,10 +415,187 @@ async function mutate(
   return next;
 }
 
-/** Deal a real NLHE hand (skips legacy shuffle ritual). */
+// ─── Provably-fair hand lifecycle (INTERFACES.md §1, §3) ───────────────────
+
+/** Games currently in the commit → entropy → deal window. */
+const starting = new Set<string>();
+/** Per-game serial queue of ledger ops (commit N+1 waits for settle N). */
+const ledgerQueues = new Map<string, Promise<unknown>>();
+/** Ledger tx hashes that arrived after the hand record was written. */
+const txCache = new Map<string, { commit?: string; reveal?: string; settle?: string }>();
+
+function enqueueLedger<T>(gameId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = ledgerQueues.get(gameId) ?? Promise.resolve();
+  const run = prev.catch(() => undefined).then(fn);
+  ledgerQueues.set(
+    gameId,
+    run.catch(() => undefined)
+  );
+  return run;
+}
+
+function errMsg(e: unknown) {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/** NEAR ledger needs NEAR account ids (session walletAddress); memory uses session ids. */
+async function resolveLedgerPlayers(playerIds: string[]): Promise<string[]> {
+  if (getLedger().kind !== 'near') return [...playerIds];
+  const docs = await SessionModel.find({ sessionId: { $in: playerIds } })
+    .select('sessionId walletAddress')
+    .lean();
+  const byId = new Map(docs.map((d) => [d.sessionId, d.walletAddress ?? null]));
+  return playerIds.map((id) => {
+    const wallet = byId.get(id);
+    if (!wallet) {
+      throw new Error(`NearLedger: player ${id} has no linked NEAR wallet`);
+    }
+    return wallet;
+  });
+}
+
+async function recordLedgerResult(
+  handId: string,
+  kind: 'commit' | 'reveal' | 'settle',
+  result: { tx?: string } | null,
+  error?: unknown
+) {
+  const cached = txCache.get(handId) ?? {};
+  if (result?.tx) {
+    cached[kind] = result.tx;
+    txCache.set(handId, cached);
+  }
+  const update: Record<string, unknown> = {};
+  if (result?.tx) update[`txs.${kind}`] = result.tx;
+  if (error) {
+    const msg = `${kind}: ${errMsg(error)}`;
+    console.error(`[ledger] hand ${handId} ${msg}`);
+    update[`txs.${kind}Error`] = msg;
+  }
+  if (Object.keys(update).length === 0) return;
+  const op: Record<string, unknown> = { $set: update };
+  if (error) op.$push = { ledgerErrors: `${kind}: ${errMsg(error)}` };
+  await HandModel.updateOne({ handId }, op).catch((e) =>
+    console.error('[ledger] failed to record result', e)
+  );
+}
+
+/**
+ * Hand complete: mark revealed (so the public view + /hands route expose the seed),
+ * write the full hand record, then reveal + settle on the ledger in the background.
+ */
+async function finalizeHand(state: StoredGame): Promise<StoredGame> {
+  const f = state.fairness!;
+  const table = state.nlhe!;
+  const deltas: Record<string, number> = {};
+  table.players.forEach((p, i) => {
+    const key = f.ledgerPlayers[i] ?? p.id;
+    deltas[key] = (deltas[key] ?? 0) + p.stack - (f.startStacks[p.id] ?? p.stack);
+  });
+  const nick = new Map(state.players.map((p) => [p.id, p.nickname]));
+  const seats = table.players.map((p) => ({
+    seat: p.seat,
+    playerId: p.id,
+    nickname: nick.get(p.id) ?? '',
+    holeCards: p.holeCards.map((c) => c.id),
+  }));
+  const fairness: HandFairnessState = { ...f, revealed: true };
+  await HandModel.updateOne(
+    { handId: f.handId },
+    {
+      $set: {
+        revealed: true,
+        complete: true,
+        seats,
+        community: table.community.map((c) => c.id),
+        deltas,
+      },
+    }
+  ).catch((e) => console.error('[fairness] hand record update failed', e));
+
+  const ledger = getLedger();
+  const { handId, gameId } = { handId: f.handId, gameId: state.gameId };
+  void enqueueLedger(gameId, async () => {
+    let revealed = false;
+    try {
+      const r = await ledger.reveal(handId, f.serverSeed, f.entropy);
+      revealed = true;
+      await recordLedgerResult(handId, 'reveal', r);
+    } catch (e) {
+      await recordLedgerResult(handId, 'reveal', null, e);
+    }
+    if (!revealed) return;
+    try {
+      const r = await ledger.settle(handId, deltas);
+      await recordLedgerResult(handId, 'settle', r);
+    } catch (e) {
+      await recordLedgerResult(handId, 'settle', null, e);
+    }
+  });
+
+  return { ...state, fairness };
+}
+
+/** Deal a real NLHE hand: commit seedHash → collect entropy → deal from deckSeed. */
 export async function actionStart(gameId: string, actorId?: string) {
+  if (starting.has(gameId)) throw new Error('HandStarting');
+  starting.add(gameId);
+  try {
+    return await startFairHand(gameId, actorId);
+  } finally {
+    starting.delete(gameId);
+  }
+}
+
+async function startFairHand(gameId: string, actorId?: string) {
+  const before = await load(gameId);
+  if (!before) throw new Error('GameNotFound');
+  if (
+    before.nlhe &&
+    before.nlhe.street !== 'complete' &&
+    before.nlhe.street !== 'waiting'
+  ) {
+    throw new Error('HandInProgress');
+  }
+  if (before.players.length < 2) throw new Error('NotEnoughPlayers');
+
+  const order = nextHandPlayerOrder(before);
+  const handId = randomUUID();
+  const { serverSeed, seedHash } = newServerSeed();
+  const ledger = getLedger();
+  const errors: string[] = [];
+
+  // 1. Commit BEFORE asking anyone for entropy.
+  let ledgerPlayers = [...order];
+  let committedTx: string | undefined;
+  try {
+    ledgerPlayers = await resolveLedgerPlayers(order);
+    const r = await enqueueLedger(gameId, () =>
+      ledger.commit(handId, seedHash, ledgerPlayers)
+    );
+    committedTx = r.tx;
+  } catch (e) {
+    errors.push(`commit: ${errMsg(e)}`);
+    console.error(`[ledger] hand ${handId} commit failed: ${errMsg(e)}`);
+  }
+  if (committedTx) txCache.set(handId, { commit: committedTx });
+  await persistEvent(before, 'hand:commit', actorId ?? null, {
+    handId,
+    seedHash,
+    committedTx: committedTx ?? null,
+  });
+
+  // 2. Entropy from every seated player (missing → zeros, recorded as such).
+  const entropy = await collectEntropy(gameId, handId, order, ENTROPY_TIMEOUT_MS);
+  const deckSeed = deckSeedFor(serverSeed, entropy);
+
+  // 3. Deal. Re-load: the table may have changed during the entropy window.
   const state = await load(gameId);
   if (!state) throw new Error('GameNotFound');
+  const nowOrder = nextHandPlayerOrder(state);
+  if (nowOrder.join(',') !== order.join(',')) {
+    throw new Error('TableChangedDuringEntropy');
+  }
 
   const stacks = await loadStacksForPlayers(state.players.map((p) => p.id));
   // Prefer stacks already on the table after a prior hand
@@ -400,12 +605,58 @@ export async function actionStart(gameId: string, actorId?: string) {
     }
   }
 
-  const next = startNlheHand(state, stacks);
-  await save(next, {
-    type: 'game:start',
-    actorId,
-    payload: { engine: 'nlhe', blinds: next.nlhe?.config },
+  const dealt = startNlheHand(state, stacks, deckSeed);
+  const startStacks: Record<string, number> = {};
+  for (const p of dealt.nlhe!.players) {
+    startStacks[p.id] = p.stack + p.committed;
+  }
+  // If the hand ran out instantly, stack+committed is post-hand; use the inputs.
+  if (dealt.nlhe!.street === 'complete') {
+    for (const p of dealt.nlhe!.players) {
+      startStacks[p.id] = Math.max(0, Math.floor(stacks[p.id] ?? 0));
+    }
+  }
+
+  const fairness: HandFairnessState = {
+    handId,
+    seedHash,
+    serverSeed,
+    entropy,
+    deckSeed: bytesToHex(deckSeed),
+    playerIds: order,
+    ledgerPlayers,
+    startStacks,
+    committedTx,
+    revealed: false,
+    errors,
+  };
+
+  await HandModel.create({
+    handId,
+    gameId,
+    seedHash,
+    serverSeed,
+    entropy,
+    deckSeed: fairness.deckSeed,
+    revealed: false,
+    complete: false,
+    seats: [],
+    community: [],
+    deltas: {},
+    ledgerPlayers,
+    ledger: ledger.kind,
+    txs: committedTx ? { commit: committedTx } : {},
+    ledgerErrors: errors,
   });
+
+  const next = await save(
+    { ...dealt, fairness },
+    {
+      type: 'game:start',
+      actorId,
+      payload: { engine: 'nlhe', blinds: dealt.nlhe?.config, handId, seedHash },
+    }
+  );
   if (actorId) {
     await recordGameActivity({
       sessionId: actorId,
@@ -415,6 +666,53 @@ export async function actionStart(gameId: string, actorId?: string) {
     });
   }
   return next;
+}
+
+/** Public hand record (INTERFACES.md §4). Secrets only once revealed. */
+export async function getHandRecord(handId: string) {
+  const doc = await HandModel.findOne({ handId }).lean();
+  if (!doc) return null;
+  const txs = { ...(txCache.get(handId) ?? {}), ...(doc.txs ?? {}) };
+  const base = {
+    handId: doc.handId,
+    gameId: doc.gameId,
+    seedHash: doc.seedHash,
+    revealed: doc.revealed,
+    complete: doc.complete,
+    ledger: doc.ledger,
+    cardIds: 'engine' as const,
+    txs,
+    errors: doc.ledgerErrors ?? [],
+    createdAt: doc.createdAt,
+  };
+  if (!doc.revealed) {
+    return { ...base, seats: [], community: [] };
+  }
+  return {
+    ...base,
+    serverSeed: doc.serverSeed,
+    entropy: doc.entropy,
+    deckSeed: doc.deckSeed,
+    seats: doc.seats,
+    community: doc.community,
+    deltas: doc.deltas,
+    ledgerPlayers: doc.ledgerPlayers,
+  };
+}
+
+export async function listGameHands(gameId: string, limit = 50) {
+  const docs = await HandModel.find({ gameId })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .select('handId seedHash revealed complete createdAt')
+    .lean();
+  return docs.map((d) => ({
+    handId: d.handId,
+    seedHash: d.seedHash,
+    revealed: d.revealed,
+    complete: d.complete,
+    createdAt: d.createdAt,
+  }));
 }
 
 /** Legacy shuffle — no-op; hand already starts via game:start. */

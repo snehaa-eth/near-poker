@@ -8,7 +8,8 @@ import { authRouter } from './auth.js';
 import { connectMongo } from './db.js';
 import { hydrateGamesFromDb } from './game-store.js';
 import { getLeaderboard } from './leaderboard.js';
-import { gamesRouter, adminRouter } from './routes.js';
+import { gamesRouter, adminRouter, handsRouter } from './routes.js';
+import { getLedger } from './ledger.js';
 import { createSocketServer } from './socket.js';
 import { treasuryRouter } from './treasury.js';
 
@@ -20,6 +21,8 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN ?? 'http://localhost:3000';
 async function main() {
   await connectMongo(MONGODB_URI, MONGODB_DB);
   await hydrateGamesFromDb();
+  // Fail fast on a misconfigured CHAIN=near (bad env) instead of mid-hand.
+  console.log(`[ledger] using ${getLedger().kind} ledger`);
 
   const app = express();
   app.use(
@@ -38,6 +41,7 @@ async function main() {
   app.use('/auth', authRouter);
   app.use('/admin', adminRouter);
   app.use('/games', gamesRouter);
+  app.use('/hands', handsRouter);
   app.use('/treasury', treasuryRouter);
 
   app.get('/leaderboard', async (req, res) => {

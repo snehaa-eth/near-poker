@@ -8,9 +8,26 @@
  * Each bot is a normal player: its own session, its own socket, and it only sees its own
  * hole cards (the server hides everyone else's until showdown). Chips come from the
  * server's off-chain /treasury/deposit (no chain involved).
+ *
+ * Provably fair: every bot answers `game:entropyRequest` with 16 random bytes, and after
+ * each hand the script fetches GET /hands/:handId and independently re-derives the deck
+ * (sha256(serverSeed) == seedHash, deckSeed, shuffle, deal order) — see INTERFACES.md §1.
+ * Exits non-zero if any hand fails verification.
+ *
+ * FAST headless mode:  HANDS=10 STEP_MS=30 START_DELAY_MS=0 npx tsx scripts/bots-6.ts
  */
+import { randomBytes } from 'node:crypto';
+
 import { io, type Socket } from 'socket.io-client';
-import { cardFromId, evaluateBestHand, formatCard } from '@nli/poker-engine';
+import { sha256 } from '@noble/hashes/sha256';
+import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
+import {
+  cardFromId,
+  deriveDeckSeed,
+  evaluateBestHand,
+  formatCard,
+  shuffleFromSeed,
+} from '@nli/poker-engine';
 
 const API = process.env.API_URL ?? 'http://localhost:4000';
 const WEB = process.env.WEB_URL ?? 'http://localhost:3000';
@@ -45,7 +62,62 @@ type View = {
   gameEnded: boolean;
   myPlayerId: string | null;
   isMyTurn: boolean;
+  fairness?: {
+    handId: string;
+    seedHash: string;
+    committedTx?: string;
+    revealed?: { serverSeed: string; entropy: string[]; deckSeed: string; revealTx?: string };
+  };
 };
+
+type HandRecord = {
+  handId: string;
+  seedHash: string;
+  serverSeed?: string;
+  entropy?: string[];
+  deckSeed?: string;
+  seats: Array<{ seat: number; playerId: string; nickname: string; holeCards: number[] }>;
+  community: number[];
+  txs?: Record<string, string>;
+};
+
+/**
+ * Independent re-derivation (INTERFACES.md §1). Deal order (engine startHand/dealHoleCards/
+ * dealCommunity): 2 hole cards per player in table order, then burn+3, burn+1, burn+1.
+ * `seen` = hole cards each bot privately received (engine ids), `board` = final public board.
+ */
+function verifyRecord(
+  rec: HandRecord,
+  seen: Map<string, number[]>,
+  board: number[],
+  revealedInView?: View['fairness']
+): string[] {
+  const errs: string[] = [];
+  if (!rec.serverSeed || !rec.entropy || !rec.deckSeed) return ['hand not revealed'];
+  const serverSeed = hexToBytes(rec.serverSeed);
+  if (bytesToHex(sha256(serverSeed)) !== rec.seedHash) errs.push('sha256(serverSeed) != seedHash');
+  if (revealedInView && revealedInView.seedHash !== rec.seedHash) errs.push('view seedHash != record seedHash');
+  if (rec.entropy.length !== rec.seats.length) errs.push('entropy count != seat count');
+  const deckSeed = deriveDeckSeed(serverSeed, rec.entropy.map((e) => hexToBytes(e)));
+  if (bytesToHex(deckSeed) !== rec.deckSeed) errs.push('deckSeed mismatch');
+  const deck = shuffleFromSeed(deckSeed).map((c) => c.id);
+  if (new Set(deck).size !== 52) errs.push('deck is not a permutation');
+  const seats = [...rec.seats].sort((a, b) => a.seat - b.seat);
+  let p = 0;
+  for (const s of seats) {
+    const exp = [deck[p]!, deck[p + 1]!];
+    p += 2;
+    if (s.holeCards.join() !== exp.join()) errs.push(`seat ${s.seat} hole ${s.holeCards} != deck ${exp}`);
+    const mine = seen.get(s.playerId);
+    if (mine && mine.join() !== exp.join()) errs.push(`seat ${s.seat}: cards the bot was dealt ${mine} != deck ${exp}`);
+  }
+  const expBoard = [deck[p + 1]!, deck[p + 2]!, deck[p + 3]!, deck[p + 5]!, deck[p + 7]!];
+  rec.community.forEach((id, i) => {
+    if (expBoard[i] !== id) errs.push(`community[${i}] ${id} != deck ${expBoard[i]}`);
+  });
+  if (board.join() !== rec.community.join()) errs.push(`table board ${board} != record ${rec.community}`);
+  return errs;
+}
 
 // UI card id -> engine card id (the server maps engine suits c,d,h,s -> UI 3,2,1,0).
 const uiToEngine = (ui: number) => (ui % 13) + [3, 2, 1, 0][Math.floor(ui / 13)]! * 13;
@@ -140,6 +212,13 @@ async function main() {
   let acting = false;
   let lastPot = 0;
   let inHand = new Set<string>();
+  // provably-fair bookkeeping
+  const seenHole = new Map<string, Map<string, number[]>>(); // handId -> playerId -> engine ids
+  const verifications: Promise<void>[] = [];
+  const fingerprints: string[] = [];
+  let verified = 0;
+  let failed = 0;
+  let checkedHand = '';
   let finished: () => void;
   const done = new Promise<void>((ok) => (finished = ok));
 
@@ -156,12 +235,44 @@ async function main() {
     bots[0]!.sock.emit('game:start', { gameId });
   };
 
+  const verifyHand = async (handId: string, board: number[], fairness: View['fairness']) => {
+    const n = verifications.length + 1;
+    try {
+      const rec = (await api(new Map(), `/hands/${handId}`)) as unknown as HandRecord;
+      const errs = verifyRecord(rec, seenHole.get(handId) ?? new Map(), board, fairness);
+      fingerprints.push(rec.deckSeed ?? '');
+      if (errs.length === 0) {
+        verified += 1;
+        console.log(`  fair ✅  hand #${n} ${handId.slice(0, 8)}  seedHash ${rec.seedHash.slice(0, 12)}…  deckSeed ${rec.deckSeed!.slice(0, 12)}…  entropy ${rec.entropy!.filter((e) => e !== '00'.repeat(16)).length}/${rec.entropy!.length}`);
+      } else {
+        failed += 1;
+        console.log(`  fair ❌  hand #${n} ${handId.slice(0, 8)}: ${errs.join('; ')}`);
+      }
+    } catch (e) {
+      failed += 1;
+      console.log(`  fair ❌  hand #${n} ${handId.slice(0, 8)}: ${(e as Error).message}`);
+    }
+  };
+
   for (const bot of bots) {
+    bot.sock.on('game:entropyRequest', ({ gameId: g, handId }: { gameId: string; handId: string }) => {
+      if (g !== gameId) return;
+      bot.sock.emit('game:entropy', { gameId, handId, entropy: randomBytes(16).toString('hex') });
+    });
     bot.sock.on('game:error', ({ error }) => {
       if (!/NotYourTurn|NoHandActive/.test(error)) console.log(`   ⚠️  ${bot.style.name}: ${error}`);
+      // Don't stall the table on a rejected action: fall back to folding.
+      if (/IllegalBet|MustRaise|InvalidAmount|InsufficientStack|CannotCheck|Illegal/.test(error)) {
+        bot.sock.emit('game:fold', { gameId });
+      }
     });
     bot.sock.on('game:state', (v: View) => {
       const me = v.players.find((p) => p.id === v.myPlayerId);
+      if (v.fairness && me && me.holeCards.length === 2 && me.holeCards.every((c) => c >= 0)) {
+        const m = seenHole.get(v.fairness.handId) ?? new Map<string, number[]>();
+        if (!m.has(me.id)) m.set(me.id, me.holeCards.map(uiToEngine));
+        seenHole.set(v.fairness.handId, m);
+      }
       if (!v.gameEnded && v.pot > 0) lastPot = v.pot;
       if (!v.gameEnded) for (const p of v.players) if (p.chipsInPot > 0) inHand.add(p.id);
       if (bot === bots[0] && v.round !== lastRound && v.status === 'playing') {
@@ -178,6 +289,11 @@ async function main() {
       }
       if (v.gameEnded && bot === bots[0] && lastRound !== 'END') {
         lastRound = 'END';
+        if (v.fairness && v.fairness.handId !== checkedHand) {
+          checkedHand = v.fairness.handId;
+          const board = v.communityCards.filter((c) => c >= 0).map(uiToEngine);
+          verifications.push(verifyHand(v.fairness.handId, board, v.fairness));
+        }
         console.log(`\n  🏆 ${v.winnerNickname ?? '?'} wins pot ${lastPot}   board: ${show(v.communityCards)}`);
         for (const p of v.players) {
           if (inHand.has(p.id) && !p.folded && p.holeCards.some((c) => c >= 0)) console.log(`     ${nameOf(v, p.id).padEnd(10)} showed ${show(p.holeCards)}`);
@@ -210,9 +326,13 @@ async function main() {
   await new Promise((r) => setTimeout(r, START_DELAY_MS));
   startHand();
   await Promise.race([done, new Promise((_, bad) => setTimeout(() => bad(new Error('timeout')), 10 * 60_000))]);
+  await Promise.all(verifications);
   console.log(`✅ ${hand} hands played by 6 bots. Table: ${WEB}/game/${gameId}`);
+  const allOk = failed === 0 && verified === hand;
+  console.log(`${allOk ? '🔐' : '🚨'} ${verified}/${hand} hands verified provably fair${failed ? ` (${failed} FAILED)` : ''}`);
+  if (fingerprints[0]) console.log(`   first deckSeed this run: ${fingerprints[0]}`);
   for (const b of bots) b.sock.close();
-  process.exit(0);
+  process.exit(allOk ? 0 : 1);
 }
 
 main().catch((e) => {

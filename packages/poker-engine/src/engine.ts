@@ -1,4 +1,5 @@
 import { draw, createShuffledDeck } from './deck.js';
+import { shuffleFromSeed } from './fairness.js';
 import { compareScores, evaluateBestHand } from './hand-rank.js';
 import { buildPots, potTotal } from './pots.js';
 import type {
@@ -360,7 +361,12 @@ function reopenAction(
  */
 export function startHand(
   state: TableState,
-  options?: { rotateButton?: boolean }
+  options?: {
+    rotateButton?: boolean;
+    /** Provably-fair 32-byte deck seed (INTERFACES.md §1). When set, the deck is
+     *  `shuffleFromSeed(deckSeed)` instead of the legacy mulberry32 shuffle. */
+    deckSeed?: Uint8Array;
+  }
 ): TableState {
   if (state.street !== 'waiting' && state.street !== 'complete') {
     throw new Error('HandInProgress');
@@ -372,7 +378,9 @@ export function startHand(
     ? (state.button + 1) % state.players.length
     : state.button;
 
-  const { deck, rngState } = createShuffledDeck(state.rngState);
+  const { deck, rngState } = options?.deckSeed
+    ? { deck: shuffleFromSeed(options.deckSeed), rngState: state.rngState }
+    : createShuffledDeck(state.rngState);
 
   let players: EnginePlayer[] = state.players.map((p) => ({
     ...p,

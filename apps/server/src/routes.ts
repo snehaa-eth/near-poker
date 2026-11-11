@@ -11,7 +11,9 @@ import {
 import {
   createEmptyLobby,
   getGameEvents,
+  getHandRecord,
   getPublicState,
+  listGameHands,
   joinExistingGame,
   listGames,
 } from './game-store.js';
@@ -69,6 +71,33 @@ gamesRouter.get('/:id/events', async (req, res) => {
   try {
     const events = await getGameEvents(req.params.id);
     res.json({ events });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+/** Recent provably-fair hands for a table (no auth). */
+gamesRouter.get('/:id/hands', async (req, res) => {
+  try {
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 50) || 50));
+    const hands = await listGameHands(req.params.id, limit);
+    res.json({ hands });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+/** `GET /hands/:handId` — public hand record (INTERFACES.md §4). */
+export const handsRouter = Router();
+
+handsRouter.get('/:handId', async (req, res) => {
+  try {
+    const hand = await getHandRecord(req.params.handId);
+    if (!hand) {
+      res.status(404).json({ error: 'HandNotFound' });
+      return;
+    }
+    res.json(hand);
   } catch (error) {
     res.status(500).json({ error: String(error) });
   }

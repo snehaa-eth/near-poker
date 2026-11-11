@@ -24,7 +24,62 @@ export type StoredGame = GameState & {
   nlhe?: TableState | null;
   /** true once stacks were written back after a completed hand. */
   nlheSettled?: boolean;
+  /** Provably-fair commit/reveal state for the current hand (server-only secrets!). */
+  fairness?: HandFairnessState | null;
 };
+
+/**
+ * Server-side fairness state for one hand. `serverSeed`, `entropy` and `deckSeed`
+ * are SECRET until `revealed` is true — never put them in a public view before.
+ */
+export type HandFairnessState = {
+  handId: string;
+  seedHash: string;
+  serverSeed: string;
+  /** Entropy hex per table player (table / seat order). */
+  entropy: string[];
+  deckSeed: string;
+  /** Session ids in table (seat) order. */
+  playerIds: string[];
+  /** Ids sent to the ledger (session ids, or NEAR accounts when CHAIN=near). */
+  ledgerPlayers: string[];
+  /** Stacks at hand start (before blinds), for per-hand deltas. */
+  startStacks: Record<string, number>;
+  committedTx?: string;
+  revealed: boolean;
+  revealTx?: string;
+  settleTx?: string;
+  errors?: string[];
+};
+
+export type PublicFairness = {
+  handId: string;
+  seedHash: string;
+  committedTx?: string;
+  revealed?: {
+    serverSeed: string;
+    entropy: string[];
+    deckSeed: string;
+    revealTx?: string;
+  };
+};
+
+/** Only reveal secrets once the hand is complete AND marked revealed. */
+export function publicFairness(state: StoredGame): PublicFairness | undefined {
+  const f = state.fairness;
+  if (!f) return undefined;
+  const out: PublicFairness = { handId: f.handId, seedHash: f.seedHash };
+  if (f.committedTx) out.committedTx = f.committedTx;
+  if (f.revealed && state.nlhe?.street === 'complete') {
+    out.revealed = {
+      serverSeed: f.serverSeed,
+      entropy: [...f.entropy],
+      deckSeed: f.deckSeed,
+      ...(f.revealTx ? { revealTx: f.revealTx } : {}),
+    };
+  }
+  return out;
+}
 
 const STREET_TO_ROUND: Record<TableState['street'], GameState['round']> = {
   waiting: 'Ante',
@@ -98,11 +153,27 @@ export function joinNlheLobby(
 }
 
 /**
+ * Player ids in the order the engine will deal the next hand (= table order,
+ * ascending seat). Entropy must be supplied in exactly this order.
+ */
+export function nextHandPlayerOrder(state: StoredGame): string[] {
+  if (
+    state.nlhe &&
+    (state.nlhe.street === 'complete' || state.nlhe.street === 'waiting')
+  ) {
+    return state.nlhe.players.map((p) => p.id);
+  }
+  return [...state.players].sort((a, b) => a.seat - b.seat).map((p) => p.id);
+}
+
+/**
  * Start (or restart) a real NLHE hand using @nli/poker-engine.
+ * `deckSeed` (32 bytes) selects the provably-fair shuffle (INTERFACES.md §1).
  */
 export function startNlheHand(
   state: StoredGame,
-  stacksByPlayerId: Record<string, number>
+  stacksByPlayerId: Record<string, number>,
+  deckSeed?: Uint8Array
 ): StoredGame {
   if (state.players.length < 2) throw new Error('NotEnoughPlayers');
 
@@ -138,7 +209,7 @@ export function startNlheHand(
         allIn: false,
       })),
     };
-    table = startHand(table, { rotateButton: true });
+    table = startHand(table, { rotateButton: true, deckSeed });
   } else if (
     state.nlhe &&
     state.nlhe.street !== 'waiting' &&
@@ -147,7 +218,7 @@ export function startNlheHand(
     throw new Error('HandInProgress');
   } else {
     table = createTable(players, { smallBlind, bigBlind });
-    table = startHand(table, { rotateButton: false });
+    table = startHand(table, { rotateButton: false, deckSeed });
   }
 
   const now = new Date().toISOString();
@@ -243,10 +314,10 @@ export function mapUiBetToAction(
     if (legal.includes('all-in')) return { type: 'all-in' };
   }
 
-  if (
-    table.currentBet === 0 ||
-    (toCall === 0 && player.bet >= table.currentBet)
-  ) {
+  // Only an unopened street is a 'bet'. With a live bet (e.g. the big blind's
+  // preflop option) a bigger amount is a 'raise' — the engine rejects 'bet'
+  // there with MustRaise.
+  if (table.currentBet === 0) {
     if (legal.includes('bet') && amount > player.bet) {
       return { type: 'bet', amount };
     }
@@ -296,6 +367,7 @@ export type NlhePublicView = PublicGameView & {
   minRaise: number;
   dealerSeat: number;
   stacksByPlayerId: Record<string, number>;
+  fairness?: PublicFairness;
 };
 
 export function toNlhePublicView(
@@ -399,6 +471,7 @@ export function toNlhePublicView(
     myPlayerId: viewerId,
     isMyTurn: Boolean(viewerId && actor && actor.id === viewerId),
     stacksByPlayerId,
+    fairness: publicFairness(state),
   };
 }
 
