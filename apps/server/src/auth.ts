@@ -70,6 +70,16 @@ export function setAccessKeyChecker(fn: AccessKeyChecker | undefined) {
   accessKeyChecker = fn;
 }
 
+/**
+ * Local end-to-end test mode (e2e/): throwaway agent keys have no testnet account, so the
+ * RPC full-access-key lookup is skipped. Only when CHAIN is NOT `near` AND ARENA_TEST_MODE=1;
+ * the NEP-413 signature and nonce are still verified. Never active in near mode.
+ */
+export function isArenaTestMode(env: NodeJS.ProcessEnv = process.env) {
+  return !isNearChain(env) && env.ARENA_TEST_MODE === '1';
+}
+const skipAccessKeyCheck: AccessKeyChecker = async () => true;
+
 const AVATAR_RE = /^\/png\/[a-z0-9_]+\.png$/i;
 
 export async function getSession(sessionId: string | undefined) {
@@ -185,7 +195,9 @@ authRouter.post('/profile', async (req, res) => {
       res.status(401).json({ error: 'ProofAccountMismatch' });
       return;
     }
-    const verified = await verifyNearProof(proof, { checkAccessKey: accessKeyChecker });
+    const verified = await verifyNearProof(proof, {
+      checkAccessKey: accessKeyChecker ?? (isArenaTestMode() ? skipAccessKeyCheck : undefined),
+    });
     if (!verified.ok) {
       res.status(401).json({ error: `InvalidNearProof: ${verified.reason}` });
       return;

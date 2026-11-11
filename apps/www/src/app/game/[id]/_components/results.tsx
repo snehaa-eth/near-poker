@@ -12,9 +12,12 @@ import { MedalIcon } from 'lucide-react';
 
 interface ResultsProps {
   players: PublicGameView['players'];
+  winnerId?: string | null;
+  /** Winning hand name when the hand went to showdown. */
+  winningHand?: string;
 }
 
-export const Results = ({ players }: ResultsProps) => {
+export const Results = ({ players, winnerId, winningHand }: ResultsProps) => {
   return (
     <div className='fixed bottom-6 left-6 z-40'>
       <Dialog>
@@ -37,9 +40,18 @@ export const Results = ({ players }: ResultsProps) => {
                   <div className='flex justify-between text-sm'>
                     <span className='font-semibold text-neutral-900'>
                       {player.nickname}
+                      {player.id === winnerId ? (
+                        <span className='ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900'>
+                          🏆 Winner{winningHand ? ` · ${winningHand}` : ''}
+                        </span>
+                      ) : null}
                     </span>
                     <span className='text-neutral-500'>
-                      Weight {player.weight.toLocaleString()}
+                      {player.folded
+                        ? 'Folded'
+                        : player.weight > 0
+                          ? `Weight ${player.weight.toLocaleString()}`
+                          : null}
                     </span>
                   </div>
                   <div className='flex gap-2'>

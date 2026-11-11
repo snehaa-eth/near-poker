@@ -99,7 +99,13 @@ const GamePage = ({
           <DeclareResult gameId={gameId} />
         </>
       ) : null}
-      {view.gameEnded ? <Results players={view.players} /> : null}
+      {view.gameEnded && view.players.length > 0 ? (
+        <Results
+          players={view.players}
+          winnerId={view.winnerId}
+          winningHand={view.winningHand}
+        />
+      ) : null}
 
       <div className='pointer-events-none absolute left-4 top-20 z-30 max-w-[70vw] text-xs text-neutral-500'>
         <p className='truncate font-medium text-neutral-700'>

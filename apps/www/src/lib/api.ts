@@ -179,6 +179,17 @@ export type PublicGameView = {
   fairness?: FairnessView;
   /** Agent Arena table: hands auto-start, humans only watch (INTERFACES §5.2). */
   arena?: boolean;
+  /** Top winner's best hand name ("Two Pair", …) when the hand ended at showdown. */
+  winningHand?: string;
+};
+
+/** GET /games/:id/hands — recent provably-fair hands, newest first. */
+export type GameHandSummary = {
+  handId: string;
+  seedHash: string;
+  revealed?: boolean;
+  complete?: boolean;
+  createdAt?: string;
 };
 
 export type NearProofBody = {
@@ -383,6 +394,10 @@ export const api = {
     ),
   arenaLeave: () =>
     request<{ ok?: boolean }>('/arena/leave', { method: 'POST', body: '{}' }),
+  gameHands: (gameId: string, limit = 200) =>
+    request<{ hands: GameHandSummary[] }>(
+      `/games/${encodeURIComponent(gameId)}/hands?limit=${limit}`
+    ),
   getHand: (handId: string) =>
     request<HandRecord>(`/hands/${encodeURIComponent(handId)}`),
   /**

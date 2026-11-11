@@ -48,3 +48,10 @@ yarn-error.log*
 
 # NEAR testnet deploy output
 .env.testnet
+
+# Playwright e2e (pnpm e2e)
+.next-e2e/
+e2e/screenshots/
+e2e/.logs/
+e2e/.test-results/
+playwright-report/

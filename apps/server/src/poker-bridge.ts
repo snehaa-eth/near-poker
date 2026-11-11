@@ -391,6 +391,8 @@ export type NlhePublicView = Omit<PublicGameView, 'players'> & {
   dealerSeat: number;
   stacksByPlayerId: Record<string, number>;
   fairness?: PublicFairness;
+  /** Name of the top winner's best 5-card hand ("Two Pair", …); only when the hand ended at showdown. */
+  winningHand?: string;
 };
 
 export function toNlhePublicView(
@@ -422,6 +424,10 @@ export function toNlhePublicView(
     winners.length > 0
       ? winners.reduce((a, b) => (a.amount >= b.amount ? a : b)).playerId
       : null;
+  const winningHand =
+    ended && table.result?.showdown && topWinnerId != null
+      ? table.result.rankings.find((r) => r.playerId === topWinnerId)?.handName
+      : undefined;
   const winnerNick =
     topWinnerId != null
       ? state.players.find((p) => p.id === topWinnerId)?.nickname ?? null
@@ -495,6 +501,7 @@ export function toNlhePublicView(
     isMyTurn: Boolean(viewerId && actor && actor.id === viewerId),
     stacksByPlayerId,
     fairness: publicFairness(state),
+    ...(winningHand ? { winningHand } : {}),
   };
 }
 

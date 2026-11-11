@@ -18,6 +18,7 @@ import { ChipAmount } from '~/components/currency-amount';
 import { ActionBar, type LocalTableAction } from './action-bar';
 import { PlayerSeat, seatPositions } from './player-seat';
 import { SleekCard } from './sleek-card';
+import { HowToWatch, TableFinished, streetHint } from './table-guide';
 
 /** Seconds each player has to act before auto-fold. */
 export const TURN_SECONDS = 90;
@@ -148,6 +149,14 @@ export const SleekTable = ({
 
   const positions = seatPositions(Math.max(ordered.length, 2));
   const board = view.communityCards.filter((c) => c >= 0);
+  /** Arena table closed: every agent left (or was re-queued). */
+  const tableFinished = Boolean(view.arena) && view.players.length === 0;
+  /** Arena hands auto-start a few seconds after the previous one ends. */
+  const arenaBetweenHands =
+    Boolean(view.arena) &&
+    !tableFinished &&
+    (view.gameEnded || view.status !== 'playing');
+  const hint = streetHint(view);
 
   return (
     <div
@@ -186,99 +195,128 @@ export const SleekTable = ({
           <div className='absolute inset-[7%] rounded-[999px] ring-1 ring-white/40' />
           <div className='absolute inset-[12%] rounded-[999px] border-2 border-white/35 shadow-[inset_0_0_40px_rgba(0,0,0,0.25)]' />
 
-          <div className='absolute left-1/2 top-1/2 z-10 flex w-full -translate-x-1/2 -translate-y-[55%] flex-col items-center gap-3 lg:gap-3.5'>
-            <div className='flex items-center gap-2 rounded-full bg-white/90 px-4 py-1.5 text-[13px] font-medium text-neutral-500 shadow-md backdrop-blur lg:px-5 lg:py-2 lg:text-sm'>
-              {view.gameEnded ? (
-                // The pot has already been paid out; say how the hand ended instead of "Pot 0".
-                <span className='font-semibold text-neutral-800'>
-                  {board.length === 0
-                    ? 'Hand over · won before the flop'
-                    : board.length < 5
-                      ? 'Hand over · everyone else folded'
-                      : 'Hand over · showdown'}
-                </span>
-              ) : (
-                <>
-                  Pot
-                  <ChipAmount
-                    value={view.pot}
-                    size='sm'
-                    className='text-[13px] text-neutral-900 lg:text-sm'
-                    iconClassName='h-4 w-4'
-                  />
-                  <span className='mx-1 text-neutral-300'>·</span>
+          {tableFinished ? (
+            <div className='absolute left-1/2 top-1/2 z-10 flex w-full -translate-x-1/2 -translate-y-1/2 justify-center px-4'>
+              <TableFinished gameId={gameId} />
+            </div>
+          ) : (
+            <div className='absolute left-1/2 top-1/2 z-10 flex w-full -translate-x-1/2 -translate-y-[55%] flex-col items-center gap-3 lg:gap-3.5'>
+              <div className='flex items-center gap-2 rounded-full bg-white/90 px-4 py-1.5 text-[13px] font-medium text-neutral-500 shadow-md backdrop-blur lg:px-5 lg:py-2 lg:text-sm'>
+                {view.gameEnded ? (
+                  // The pot has already been paid out; say how the hand ended instead of "Pot 0".
                   <span className='font-semibold text-neutral-800'>
-                    {view.roundLabel}
+                    {board.length === 0
+                      ? 'Hand over · won before the flop'
+                      : board.length < 5
+                        ? 'Hand over · everyone else folded'
+                        : 'Hand over · showdown'}
                   </span>
-                </>
-              )}
-            </div>
-
-            {view.fairness ? (
-              view.fairness.revealed ||
-              view.gameEnded ||
-              view.round === 'End' ? (
-                <Link
-                  href={`/verify/${encodeURIComponent(view.fairness.handId)}`}
-                  target='_blank'
-                  className='rounded-full bg-emerald-50/95 px-3 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm ring-1 ring-emerald-200 transition hover:bg-white lg:text-xs'
-                >
-                  ✅ Verify hand
-                </Link>
-              ) : (
-                <span
-                  title={`Deck seed hash committed before the deal: ${view.fairness.seedHash}`}
-                  className='rounded-full bg-black/45 px-3 py-1 font-mono text-[11px] text-white/90 shadow-sm backdrop-blur-sm lg:text-xs'
-                >
-                  🔒 Deck committed · {view.fairness.seedHash.slice(0, 8)}
-                </span>
-              )
-            ) : null}
-
-            <div className='flex min-h-[4.75rem] items-center gap-2 lg:min-h-[5.5rem] lg:gap-2.5 xl:min-h-[6rem]'>
-              {board.length === 0 ? (
-                <div className='rounded-2xl border border-white/25 bg-black/25 px-5 py-4 text-xs text-white/75 backdrop-blur-sm lg:px-6 lg:text-sm'>
-                  {view.gameEnded
-                    ? 'No community cards: the hand ended before the flop'
-                    : 'Waiting for flop'}
-                </div>
-              ) : (
-                <>
-                  {board.map((cardId, i) => (
-                    <SleekCard
-                      key={`board-${i}-${cardId}`}
-                      cardId={cardId}
-                      className='hover:-translate-y-0.5'
-                      size='md'
+                ) : arenaBetweenHands ? (
+                  <span className='font-semibold text-neutral-800'>
+                    Next hand starting…
+                  </span>
+                ) : (
+                  <>
+                    Pot
+                    <ChipAmount
+                      value={view.pot}
+                      size='sm'
+                      className='text-[13px] text-neutral-900 lg:text-sm'
+                      iconClassName='h-4 w-4'
                     />
-                  ))}
-                  {board.length < 5
-                    ? Array.from({ length: 5 - board.length }).map((_, i) => (
-                        <SleekCard key={`pad-${i}`} cardId={-1} size='md' />
-                      ))
-                    : null}
-                </>
-              )}
-            </div>
-
-            {view.gameEnded && view.winnerNickname ? (
-              <div className='rounded-full bg-neutral-950 px-4 py-1.5 text-sm font-semibold text-white shadow-lg'>
-                Winner · {view.winnerNickname}
+                    <span className='mx-1 text-neutral-300'>·</span>
+                    <span className='font-semibold text-neutral-800'>
+                      {view.roundLabel}
+                    </span>
+                  </>
+                )}
               </div>
-            ) : null}
-          </div>
+
+              {arenaBetweenHands && view.gameEnded ? (
+                <p className='-mt-1.5 text-[11px] font-medium text-white/85 drop-shadow lg:text-xs'>
+                  Next hand starting…
+                </p>
+              ) : hint ? (
+                <p className='-mt-1.5 text-[11px] font-medium text-white/80 drop-shadow lg:text-xs'>
+                  {hint}
+                </p>
+              ) : null}
+
+              {view.fairness ? (
+                view.fairness.revealed ||
+                view.gameEnded ||
+                view.round === 'End' ? (
+                  <Link
+                    href={`/verify/${encodeURIComponent(view.fairness.handId)}`}
+                    target='_blank'
+                    className='rounded-full bg-emerald-50/95 px-3 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm ring-1 ring-emerald-200 transition hover:bg-white lg:text-xs'
+                  >
+                    ✅ Verify hand
+                  </Link>
+                ) : (
+                  <span
+                    title={`Deck seed hash committed before the deal: ${view.fairness.seedHash}`}
+                    className='rounded-full bg-black/45 px-3 py-1 font-mono text-[11px] text-white/90 shadow-sm backdrop-blur-sm lg:text-xs'
+                  >
+                    🔒 Deck committed · {view.fairness.seedHash.slice(0, 8)}
+                  </span>
+                )
+              ) : null}
+
+              <div className='flex min-h-[4.75rem] items-center gap-2 lg:min-h-[5.5rem] lg:gap-2.5 xl:min-h-[6rem]'>
+                {board.length === 0 ? (
+                  <div className='rounded-2xl border border-white/25 bg-black/25 px-5 py-4 text-xs text-white/75 backdrop-blur-sm lg:px-6 lg:text-sm'>
+                    {view.gameEnded
+                      ? 'No community cards: the hand ended before the flop'
+                      : arenaBetweenHands
+                        ? 'Dealing the next hand…'
+                        : 'Waiting for flop'}
+                  </div>
+                ) : (
+                  <>
+                    {board.map((cardId, i) => (
+                      <SleekCard
+                        key={`board-${i}-${cardId}`}
+                        cardId={cardId}
+                        className='hover:-translate-y-0.5'
+                        size='md'
+                      />
+                    ))}
+                    {board.length < 5
+                      ? Array.from({ length: 5 - board.length }).map((_, i) => (
+                          <SleekCard key={`pad-${i}`} cardId={-1} size='md' />
+                        ))
+                      : null}
+                  </>
+                )}
+              </div>
+
+              {view.gameEnded && view.winnerNickname ? (
+                <div className='rounded-full bg-neutral-950 px-4 py-1.5 text-sm font-semibold text-white shadow-lg'>
+                  Winner · {view.winnerNickname}
+                  {view.winningHand ? ` · ${view.winningHand}` : ''}
+                </div>
+              ) : null}
+            </div>
+          )}
 
           {ordered.map((player, index) => {
             const pos = positions[index] ?? { left: '50%', top: '50%' };
             const isMe = player.id === view.myPlayerId;
             const isTurn =
               player.id === view.nextPlayerId && view.status === 'playing';
+            const isWinner =
+              view.gameEnded &&
+              view.winnerId != null &&
+              player.id === view.winnerId;
             return (
               <PlayerSeat
                 key={player.id}
                 isDealer={player.seat === dealerSeat}
                 isMe={isMe}
                 isTurn={isTurn}
+                isWinner={isWinner}
+                winningHand={isWinner ? view.winningHand : undefined}
                 turnSecondsLeft={isTurn && turnActive ? secondsLeft : null}
                 player={player}
                 stack={seatStacks?.[player.id] ?? defaultStack}
@@ -293,15 +331,18 @@ export const SleekTable = ({
       {!preview && spectator ? (
         <div
           className={cn(
-            'relative z-10 flex shrink-0 items-start justify-center',
+            'relative z-10 flex shrink-0 flex-wrap items-start justify-center gap-2',
             compact ? 'h-6' : 'h-24'
           )}
         >
           <span className='rounded-full bg-black/45 px-4 py-1.5 text-xs font-medium text-white/90 shadow-sm backdrop-blur-sm'>
-            {view.arena
-              ? '👀 Spectating · agents act inside a TEE — tap 🔒 TEE on a seat to verify'
-              : '👀 Spectating'}
+            {tableFinished
+              ? '👀 Spectating · this table has closed'
+              : view.arena
+                ? '👀 Spectating · agents act inside a TEE — tap 🔒 TEE on a seat to verify'
+                : '👀 Spectating'}
           </span>
+          {view.arena ? <HowToWatch /> : null}
         </div>
       ) : !preview &&
         view.status === 'playing' &&

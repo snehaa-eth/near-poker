@@ -1,5 +1,6 @@
 import { createAppServer } from './app.js';
 import { getArenaConfig } from './arena/config.js';
+import { isArenaTestMode } from './auth.js';
 import { connectMongo } from './db.js';
 import { hydrateGamesFromDb } from './game-store.js';
 import { getLedger } from './ledger.js';
@@ -20,6 +21,10 @@ async function main() {
       ? `[arena] enabled (attestations from ${arena.nearaiBaseUrl})`
       : '[arena] disabled: set NEARAI_API_KEY to accept agents'
   );
+
+  if (isArenaTestMode()) {
+    console.warn('[auth] ARENA_TEST_MODE=1 (no chain): skipping the RPC full-access-key check at login. Local tests only.');
+  }
 
   const { server } = createAppServer(CORS_ORIGIN);
 

@@ -154,6 +154,10 @@ interface PlayerSeatProps {
   isMe: boolean;
   isTurn: boolean;
   isDealer: boolean;
+  /** Won the hand that just ended. */
+  isWinner?: boolean;
+  /** Best hand name when the win came at showdown. */
+  winningHand?: string;
   stack: number;
   avatarUrl?: string | null;
   style?: React.CSSProperties;
@@ -182,6 +186,8 @@ export const PlayerSeat = ({
   isMe,
   isTurn,
   isDealer,
+  isWinner = false,
+  winningHand,
   stack,
   avatarUrl,
   style,
@@ -245,11 +251,13 @@ export const PlayerSeat = ({
         <div
           className={cn(
             'flex items-center gap-2 rounded-full border bg-white/95 py-1.5 pl-1.5 pr-3.5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] backdrop-blur lg:py-2 lg:pl-2 lg:pr-4',
-            isTurn
-              ? 'border-[#1D9BF0] ring-[3px] ring-[#1D9BF0]/15'
-              : isMe
-                ? 'border-neutral-300'
-                : 'border-neutral-200/90'
+            isWinner
+              ? 'border-amber-400 ring-[3px] ring-amber-300/60'
+              : isTurn
+                ? 'border-[#1D9BF0] ring-[3px] ring-[#1D9BF0]/15'
+                : isMe
+                  ? 'border-neutral-300'
+                  : 'border-neutral-200/90'
           )}
         >
           {avatarUrl ? (
@@ -291,6 +299,12 @@ export const PlayerSeat = ({
           </div>
         </div>
       </div>
+
+      {isWinner ? (
+        <div className='rounded-full bg-amber-400 px-2.5 py-0.5 text-[11px] font-semibold text-neutral-950 shadow lg:text-xs'>
+          🏆 Winner{winningHand ? ` · ${winningHand}` : ''}
+        </div>
+      ) : null}
 
       {isTurn ? (
         <div

@@ -10,9 +10,11 @@
     "test:poker": "pnpm --filter @nli/poker-engine test",
     "demo": "pnpm build:libs && pnpm --filter server demo",
     "test:contract": "cd contract && npm install && npm run build && npm test",
-    "build:libs": "pnpm --filter @nli/poker-engine --filter game-engine build"
+    "build:libs": "pnpm --filter @nli/poker-engine --filter game-engine build",
+    "e2e": "playwright test -c e2e/playwright.config.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "config": "workspace:*",
     "prettier": "^3.2.5",
     "turbo": "^2"

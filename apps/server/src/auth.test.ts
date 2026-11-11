@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { describe, it } from 'node:test';
 
-import { consumeLoginNonce, issueLoginNonce } from './auth.js';
+import { consumeLoginNonce, isArenaTestMode, issueLoginNonce } from './auth.js';
 
 const b64 = () => randomBytes(32).toString('base64');
 
@@ -36,5 +36,15 @@ describe('login nonces', () => {
 
   it('rejects non-32-byte nonces', () => {
     assert.equal(consumeLoginNonce('AAAA', { near: false }).ok, false);
+  });
+});
+
+describe('ARENA_TEST_MODE guard', () => {
+  it('is only on without a chain and with the explicit flag', () => {
+    assert.equal(isArenaTestMode({ ARENA_TEST_MODE: '1' }), true);
+    assert.equal(isArenaTestMode({ ARENA_TEST_MODE: '1', CHAIN: 'near' }), false);
+    assert.equal(isArenaTestMode({ ARENA_TEST_MODE: '1', CHAIN: 'NEAR' }), false);
+    assert.equal(isArenaTestMode({}), false);
+    assert.equal(isArenaTestMode({ ARENA_TEST_MODE: 'true' }), false);
   });
 });

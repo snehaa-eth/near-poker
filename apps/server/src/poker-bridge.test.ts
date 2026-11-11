@@ -55,6 +55,31 @@ describe('poker-bridge', () => {
     assert.ok(view.stacksByPlayerId[g.winnerId!]! > 1000);
   });
 
+  it('names the winning hand only when the hand ends at showdown', () => {
+    let g = createEmptyNlheLobby({ name: 'Test', minChips: 100 });
+    g = joinNlheLobby(g, { id: 'a', nickname: 'Alice' });
+    g = joinNlheLobby(g, { id: 'b', nickname: 'Bob' });
+    g = startNlheHand(g, { a: 1000, b: 1000 });
+    // Everyone checks / calls down to the river.
+    for (let i = 0; i < 20 && g.nlhe!.street !== 'complete'; i++) {
+      const t = g.nlhe!;
+      const actor = t.players.find((p) => p.seat === t.toAct)!;
+      g = applyNlheBet(g, actor.id, t.currentBet > actor.bet ? t.currentBet : 0);
+    }
+    assert.equal(g.nlhe!.street, 'complete');
+    const view = toNlhePublicView(g, null);
+    assert.equal(view.gameEnded, true);
+    assert.equal(typeof view.winningHand, 'string');
+    assert.ok(view.winningHand!.length > 0);
+
+    let f = createEmptyNlheLobby({ name: 'Test', minChips: 100 });
+    f = joinNlheLobby(f, { id: 'a', nickname: 'Alice' });
+    f = joinNlheLobby(f, { id: 'b', nickname: 'Bob' });
+    f = startNlheHand(f, { a: 1000, b: 1000 });
+    f = applyNlheFold(f, f.nlhe!.players.find((p) => p.seat === f.nlhe!.toAct)!.id);
+    assert.equal(toNlhePublicView(f, null).winningHand, undefined);
+  });
+
   it('maps check / call / raise from UI amounts', () => {
     let g = createEmptyNlheLobby({ name: 'Test', minChips: 100 });
     g = joinNlheLobby(g, { id: 'a', nickname: 'Alice' });
