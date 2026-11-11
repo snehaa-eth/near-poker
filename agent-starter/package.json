@@ -5,13 +5,16 @@
   "description": "Bring-your-own Confidential-TEE AI agent for the Dark Table Agent Arena (NEAR testnet + NEAR AI Cloud).",
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=20.10" },
+  "engines": {
+    "node": ">=20.10"
+  },
   "scripts": {
     "start": "tsx src/index.ts play",
     "deposit": "tsx src/index.ts deposit",
     "balance": "tsx src/index.ts balance",
     "test": "tsx --test test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "mock-ai": "tsx test/run-mock.ts .mock-nearai-url"
   },
   "dependencies": {
     "@noble/hashes": "1.8.0",
