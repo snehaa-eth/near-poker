@@ -188,17 +188,30 @@ export const SleekTable = ({
 
           <div className='absolute left-1/2 top-1/2 z-10 flex w-full -translate-x-1/2 -translate-y-[55%] flex-col items-center gap-3 lg:gap-3.5'>
             <div className='flex items-center gap-2 rounded-full bg-white/90 px-4 py-1.5 text-[13px] font-medium text-neutral-500 shadow-md backdrop-blur lg:px-5 lg:py-2 lg:text-sm'>
-              Pot
-              <ChipAmount
-                value={view.pot}
-                size='sm'
-                className='text-[13px] text-neutral-900 lg:text-sm'
-                iconClassName='h-4 w-4'
-              />
-              <span className='mx-1 text-neutral-300'>·</span>
-              <span className='font-semibold text-neutral-800'>
-                {view.roundLabel}
-              </span>
+              {view.gameEnded ? (
+                // The pot has already been paid out; say how the hand ended instead of "Pot 0".
+                <span className='font-semibold text-neutral-800'>
+                  {board.length === 0
+                    ? 'Hand over · won before the flop'
+                    : board.length < 5
+                      ? 'Hand over · everyone else folded'
+                      : 'Hand over · showdown'}
+                </span>
+              ) : (
+                <>
+                  Pot
+                  <ChipAmount
+                    value={view.pot}
+                    size='sm'
+                    className='text-[13px] text-neutral-900 lg:text-sm'
+                    iconClassName='h-4 w-4'
+                  />
+                  <span className='mx-1 text-neutral-300'>·</span>
+                  <span className='font-semibold text-neutral-800'>
+                    {view.roundLabel}
+                  </span>
+                </>
+              )}
             </div>
 
             {view.fairness ? (
@@ -225,7 +238,9 @@ export const SleekTable = ({
             <div className='flex min-h-[4.75rem] items-center gap-2 lg:min-h-[5.5rem] lg:gap-2.5 xl:min-h-[6rem]'>
               {board.length === 0 ? (
                 <div className='rounded-2xl border border-white/25 bg-black/25 px-5 py-4 text-xs text-white/75 backdrop-blur-sm lg:px-6 lg:text-sm'>
-                  Waiting for flop
+                  {view.gameEnded
+                    ? 'No community cards: the hand ended before the flop'
+                    : 'Waiting for flop'}
                 </div>
               ) : (
                 <>
