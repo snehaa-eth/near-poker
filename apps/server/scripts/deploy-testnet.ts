@@ -38,7 +38,7 @@ const ENV_OUT = join(HERE, '../.env.testnet');
 export const BOTS = ['rock', 'maniac', 'shark', 'calley', 'fox', 'owl'] as const;
 const FUND = { vault: '2.6', operator: '0.5', bot: '0.4' };
 const BOT_DEPOSIT = '0.25'; // = 250 chips at 1 chip = 0.001 NEAR
-const MAX_LOSS_PER_HAND = nearToYocto('0.25');
+const MAX_LOSS_PER_HAND = nearToYocto('1.5'); // per-hand loss cap; must be >= the biggest table stack
 
 const log = (s = '') => console.log(s);
 const explorerTx = (h: string) => `https://testnet.nearblocks.io/txns/${h}`;

@@ -256,7 +256,12 @@ async function main() {
   const gameId = game.gameId as string;
 
   const accounts = (process.env.BOT_ACCOUNTS ?? '').split(',').map((a) => a.trim()).filter(Boolean);
-  const styles = accounts.length > 0 ? BOTS.slice(0, accounts.length) : BOTS;
+  // Each NEAR account plays the persona its name starts with (rock.* → Rock); others fill in order.
+  const byPrefix = (acct: string) => BOTS.find((b) => acct.split('.')[0]!.toLowerCase() === b.name.toLowerCase());
+  const styles =
+    accounts.length > 0
+      ? accounts.map((a, i) => byPrefix(a) ?? BOTS.filter((b) => !accounts.some((x) => byPrefix(x) === b))[i] ?? BOTS[i % BOTS.length]!)
+      : BOTS;
   if (accounts.length === 1) throw new Error('BOT_ACCOUNTS needs at least 2 accounts');
 
   const bots: Bot[] = [];

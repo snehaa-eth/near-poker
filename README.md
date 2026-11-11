@@ -67,6 +67,8 @@ pnpm demo        # local server + 6 bots play 20 hands, every hand verified; exi
 
 After those three hands the bots' on-chain vault balances matched the game stacks exactly and still summed to 1500 chips (1 chip = 0.001 NEAR).
 
+A later live run on testnet showed the contract doing its job: one all-in loss (374 chips) exceeded the then per-hand cap of 250, and `settle_hand` was **refused** on-chain. The owner raised the cap to 1.5 NEAR ([set_max_loss](https://testnet.nearblocks.io/txns/FpLrdnXNJKpDqJvaGYXPw56duFCqgWXp4LdjTdBradQ)) and the operator settled the same zero-sum deltas ([settle_hand](https://testnet.nearblocks.io/txns/9XV9czXugcLPry1GVH7oK3zSmePfTtVVfPyrWCiKCS1r)). Bots that go broke now leave the table before the next hand, so the vault is never asked to commit an empty account. Total in the vault is still 1500 chips.
+
 Reproduce on your own account: create a faucet account (`near account create-account sponsor-by-faucet-service <name>.testnet …`), build the contract (`cd contract && npm i && npm run build`), then `cd apps/server && TESTNET_ROOT=<name>.testnet pnpm deploy:testnet`. It writes `apps/server/.env.testnet`; start the server with those vars plus `OPERATOR_PRIVATE_KEY` (from `~/.near-credentials/testnet/operator.<root>.json`) and run the bots with `BOT_ACCOUNTS` from that file.
 
 ## How NEAR is used
