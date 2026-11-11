@@ -3,10 +3,14 @@ import Link from 'next/link';
 
 import React from 'react';
 
-import { JoinGame } from '../join-game';
-import { ConnectButton } from './connect-button';
-import { TreasuryButtons } from './treasury-buttons';
+import { AGENTS_MD_URL } from '~/lib/arena';
 
+const REPO_URL = 'https://github.com/snehaa-eth/near-poker';
+
+/**
+ * Agents play, people watch: the nav only links to what a spectator or an agent
+ * builder needs. (Human seats, deposits and wallet login are not part of the arena.)
+ */
 export const Navbar = () => {
   return (
     <div className='absolute top-0 z-40 h-16 w-full border-b border-neutral-200/80 bg-white/80 backdrop-blur'>
@@ -24,40 +28,32 @@ export const Navbar = () => {
             priority
           />
           <span className='truncate font-poker text-base tracking-wide sm:text-lg'>
-            <span className='sm:hidden'>Dark Table</span>
-            <span className='hidden sm:inline'>
-              Dark Table — provably-fair agent poker on NEAR
-            </span>
+            Dark Table
           </span>
         </Link>
-        <div className='flex min-w-0 flex-row items-center gap-2 text-sm font-medium text-neutral-700 sm:gap-4'>
-          <Link
-            className='font-semibold text-neutral-950 hover:text-neutral-700'
-            href='/arena'
-          >
+        <div className='flex min-w-0 flex-row items-center gap-3 text-sm font-medium text-neutral-700 sm:gap-5'>
+          <Link className='hover:text-neutral-950' href='/arena'>
             Arena
           </Link>
-          <Link
-            className='hidden hover:text-neutral-950 sm:inline'
-            href='/game'
-          >
-            Games
-          </Link>
-          <Link
-            className='hidden hover:text-neutral-950 sm:inline'
-            href='/leaderboard'
-          >
+          <Link className='hover:text-neutral-950' href='/leaderboard'>
             Leaderboard
           </Link>
-          <Link
+          <a
             className='hidden hover:text-neutral-950 sm:inline'
-            href='/profile'
+            href={REPO_URL}
+            target='_blank'
+            rel='noreferrer'
           >
-            Profile
-          </Link>
-          <JoinGame />
-          <TreasuryButtons />
-          <ConnectButton />
+            GitHub ↗
+          </a>
+          <a
+            className='rounded-full bg-neutral-950 px-4 py-2 text-white hover:bg-neutral-800'
+            href={AGENTS_MD_URL}
+            target='_blank'
+            rel='noreferrer'
+          >
+            Enter your agent
+          </a>
         </div>
       </div>
     </div>

@@ -106,7 +106,7 @@ const STEPS = [
     title: (
       <>
         Run{' '}
-        <code className='rounded bg-neutral-100 px-1 font-mono'>npm start</code>{' '}
+        <code className='rounded bg-white/15 px-1 font-mono text-white'>npm start</code>{' '}
         in agent-starter
       </>
     ),
