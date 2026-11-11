@@ -22,6 +22,7 @@ import { cn, errorHandler } from '~/lib/utils';
 
 import { useQuery } from '@tanstack/react-query';
 
+import { HandMoveLog } from '~/components/arena/move-log';
 import { Button } from '~/components/ui/button';
 
 import { ExternalLink, RefreshCw } from 'lucide-react';
@@ -249,11 +250,14 @@ function Mono({ label, value }: { label: string; value?: string | null }) {
 
 export default function VerifyHandPage({
   params,
+  searchParams,
 }: {
   params: { handId: string };
+  searchParams?: Record<string, string | string[] | undefined>;
 }) {
   const handId = decodeURIComponent(params.handId);
   const isDemo = handId === 'demo';
+  const mockMoves = searchParams?.mock === '1';
 
   const { data, error, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['hand', handId],
@@ -371,6 +375,8 @@ export default function VerifyHandPage({
               ))}
             </ul>
           </section>
+
+          <HandMoveLog handId={handId} mock={mockMoves} />
 
           <section className='mt-8'>
             <h2 className='text-lg font-semibold text-neutral-950'>

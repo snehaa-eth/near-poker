@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 
-import type { BotInfo } from '~/lib/api';
+import type { AgentInfo, BotInfo } from '~/lib/api';
+import { shortModel } from '~/lib/arena';
 import { cn } from '~/lib/utils';
 
 import { ChipAmount } from '~/components/currency-amount';
@@ -13,6 +14,8 @@ import {
 } from '~/components/ui/popover';
 
 import { SleekCard } from './sleek-card';
+
+import { ArrowUpRight } from 'lucide-react';
 
 /** How long an agent's table talk stays on screen. */
 const SPEECH_MS = 5000;
@@ -25,6 +28,7 @@ export type SeatPlayer = {
   folded: boolean;
   holeCards: number[];
   bot?: BotInfo;
+  agent?: AgentInfo;
 };
 
 function truncateMiddle(value: string, head = 6, tail = 4) {
@@ -71,6 +75,63 @@ function BotBadge({ bot }: { bot: BotInfo }) {
             </div>
           ) : null}
         </dl>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** Arena agent (INTERFACES §5.4): every accepted move carries a TEE receipt. */
+function AgentBadge({ agent }: { agent: AgentInfo }) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        className='max-w-[8.5rem] shrink-0 truncate rounded-full bg-emerald-50 px-1.5 py-[1px] text-[10px] font-semibold text-emerald-800 ring-1 ring-emerald-200 transition hover:bg-emerald-100 lg:text-[11px]'
+        aria-label='TEE agent details'
+        title={agent.model}
+      >
+        🔒 TEE · {shortModel(agent.model, 14)}
+      </PopoverTrigger>
+      <PopoverContent
+        side='top'
+        className='w-72 rounded-2xl border-neutral-200 bg-white p-3 text-xs text-neutral-700'
+      >
+        <p className='text-sm font-semibold text-neutral-950'>TEE agent</p>
+        <dl className='mt-2 space-y-1'>
+          <div className='flex justify-between gap-3'>
+            <dt className='text-neutral-400'>Model</dt>
+            <dd className='truncate font-mono' title={agent.model}>
+              {agent.model}
+            </dd>
+          </div>
+          <div className='flex justify-between gap-3'>
+            <dt className='text-neutral-400'>Moves verified</dt>
+            <dd className='font-medium tabular-nums text-emerald-700'>
+              {agent.movesVerified} ✓
+            </dd>
+          </div>
+        </dl>
+        <p className='mt-2 text-[11px] leading-snug text-neutral-500'>
+          Each move is a NEAR AI Cloud reply signed inside a confidential TEE
+          and checked by the server before it hits the table.
+        </p>
+        {agent.lastReceiptUrl ? (
+          <a
+            href={agent.lastReceiptUrl}
+            target='_blank'
+            rel='noopener noreferrer'
+            className='mt-3 flex w-full items-center justify-center gap-1 rounded-full bg-neutral-950 px-3 py-2 text-xs font-semibold text-white hover:bg-neutral-800'
+          >
+            Verify last move on NEAR AI
+            <ArrowUpRight className='h-3.5 w-3.5' />
+          </a>
+        ) : (
+          <p className='mt-3 text-center text-[11px] text-neutral-400'>
+            No move receipt yet
+          </p>
+        )}
+        <p className='mt-1.5 text-center text-[10px] text-neutral-400'>
+          Checks Intel TDX + NVIDIA GPU evidence in your browser
+        </p>
       </PopoverContent>
     </Popover>
   );
@@ -213,7 +274,11 @@ export const PlayerSeat = ({
               <span className='max-w-[7.5rem] truncate text-[13px] font-semibold text-neutral-900 lg:max-w-[9rem] lg:text-sm'>
                 {isMe ? `${player.nickname} (you)` : player.nickname}
               </span>
-              {player.bot ? <BotBadge bot={player.bot} /> : null}
+              {player.agent ? (
+                <AgentBadge agent={player.agent} />
+              ) : player.bot ? (
+                <BotBadge bot={player.bot} />
+              ) : null}
             </div>
             <div className='text-[11px] text-neutral-500 lg:text-xs'>
               <ChipAmount

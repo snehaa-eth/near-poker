@@ -1,21 +1,23 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-
 import Link from 'next/link';
 
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+
 import type { PublicGameView } from '~/lib/api';
-import { ChipAmount } from '~/components/currency-amount';
+import { ARENA_TURN_SECONDS } from '~/lib/arena';
 import { playSound } from '~/lib/sounds';
+import { cn } from '~/lib/utils';
+
+import { toast } from 'sonner';
 import { useSession } from '~/providers/session-provider';
 import { useSocket } from '~/providers/socket-provider';
-import { cn } from '~/lib/utils';
+
+import { ChipAmount } from '~/components/currency-amount';
 
 import { ActionBar, type LocalTableAction } from './action-bar';
 import { PlayerSeat, seatPositions } from './player-seat';
 import { SleekCard } from './sleek-card';
-
-import { toast } from 'sonner';
 
 /** Seconds each player has to act before auto-fold. */
 export const TURN_SECONDS = 90;
@@ -59,6 +61,12 @@ export const SleekTable = ({
     (view.myPlayerId ? seatStacks?.[view.myPlayerId] : undefined) ??
     defaultStack;
   const dealerSeat = view.dealerSeat ?? 0;
+  const turnSeconds = view.arena ? ARENA_TURN_SECONDS : TURN_SECONDS;
+  const seated =
+    view.myPlayerId != null &&
+    view.players.some((p) => p.id === view.myPlayerId);
+  /** Arena tables are agent-only; humans (and anyone not seated) just watch. */
+  const spectator = !onLocalAction && (Boolean(view.arena) || !seated);
 
   const turnActive =
     view.status === 'playing' &&
@@ -71,21 +79,21 @@ export const SleekTable = ({
     : null;
 
   const [turnEndsAt, setTurnEndsAt] = useState<number | null>(null);
-  const [secondsLeft, setSecondsLeft] = useState(TURN_SECONDS);
+  const [secondsLeft, setSecondsLeft] = useState(turnSeconds);
   const foldedForTurnRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!turnKey) {
       setTurnEndsAt(null);
-      setSecondsLeft(TURN_SECONDS);
+      setSecondsLeft(turnSeconds);
       foldedForTurnRef.current = null;
       return;
     }
     foldedForTurnRef.current = null;
-    const endsAt = Date.now() + TURN_SECONDS * 1000;
+    const endsAt = Date.now() + turnSeconds * 1000;
     setTurnEndsAt(endsAt);
-    setSecondsLeft(TURN_SECONDS);
-  }, [turnKey]);
+    setSecondsLeft(turnSeconds);
+  }, [turnKey, turnSeconds]);
 
   useEffect(() => {
     if (!turnEndsAt || !turnKey) return;
@@ -99,6 +107,8 @@ export const SleekTable = ({
       foldedForTurnRef.current = turnKey;
 
       // Dummy: fold whoever is acting. Live: only fold yourself.
+      // Spectators never act (the arena server times agents out itself).
+      if (spectator) return;
       if (!onLocalAction && !view.isMyTurn) return;
 
       try {
@@ -119,7 +129,15 @@ export const SleekTable = ({
     tick();
     const id = window.setInterval(tick, 250);
     return () => window.clearInterval(id);
-  }, [turnEndsAt, turnKey, view.isMyTurn, onLocalAction, socket, gameId]);
+  }, [
+    turnEndsAt,
+    turnKey,
+    view.isMyTurn,
+    onLocalAction,
+    socket,
+    gameId,
+    spectator,
+  ]);
 
   const ordered = useMemo(() => {
     const players = [...view.players].sort((a, b) => a.seat - b.seat);
@@ -184,7 +202,9 @@ export const SleekTable = ({
             </div>
 
             {view.fairness ? (
-              view.fairness.revealed || view.gameEnded || view.round === 'End' ? (
+              view.fairness.revealed ||
+              view.gameEnded ||
+              view.round === 'End' ? (
                 <Link
                   href={`/verify/${encodeURIComponent(view.fairness.handId)}`}
                   target='_blank'
@@ -255,10 +275,23 @@ export const SleekTable = ({
         </div>
       </div>
 
-      {!preview &&
-      view.status === 'playing' &&
-      view.round !== 'End' &&
-      !view.gameEnded ? (
+      {!preview && spectator ? (
+        <div
+          className={cn(
+            'relative z-10 flex shrink-0 items-start justify-center',
+            compact ? 'h-6' : 'h-24'
+          )}
+        >
+          <span className='rounded-full bg-black/45 px-4 py-1.5 text-xs font-medium text-white/90 shadow-sm backdrop-blur-sm'>
+            {view.arena
+              ? '👀 Spectating · agents act inside a TEE — tap 🔒 TEE on a seat to verify'
+              : '👀 Spectating'}
+          </span>
+        </div>
+      ) : !preview &&
+        view.status === 'playing' &&
+        view.round !== 'End' &&
+        !view.gameEnded ? (
         <div className='relative z-10 shrink-0'>
           {view.isMyTurn ? (
             <p
@@ -278,14 +311,17 @@ export const SleekTable = ({
             minRaiseIncrement={view.minRaise ?? 1}
             isMyTurn={view.isMyTurn}
             myChipsInPot={
-              view.players.find((p) => p.id === view.myPlayerId)?.chipsInPot ?? 0
+              view.players.find((p) => p.id === view.myPlayerId)?.chipsInPot ??
+              0
             }
             stack={myStack}
             onLocalAction={onLocalAction}
           />
         </div>
       ) : (
-        <div className={cn('relative z-10 shrink-0', compact ? 'h-6' : 'h-24')} />
+        <div
+          className={cn('relative z-10 shrink-0', compact ? 'h-6' : 'h-24')}
+        />
       )}
     </div>
   );

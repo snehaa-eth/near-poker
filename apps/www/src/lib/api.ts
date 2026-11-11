@@ -51,6 +51,60 @@ export type BotInfo = {
   lastLine?: string;
 };
 
+/** INTERFACES §5.4 — TEE agent seated at an arena table. */
+export type AgentInfo = {
+  model: string;
+  movesVerified: number;
+  /** NEAR AI Verification Center link for the agent's latest accepted move. */
+  lastReceiptUrl?: string;
+};
+
+/** GET /arena/tables (INTERFACES §5.4). `seats` may be a count or a seat list. */
+export type ArenaTable = {
+  gameId: string;
+  seats:
+    | number
+    | Array<{
+        seat?: number;
+        playerId?: string;
+        nickname?: string;
+        walletAddress?: string;
+        model?: string;
+        chips?: number;
+      }>;
+  handsPlayed: number;
+  status: string;
+  name?: string;
+};
+
+/** GET /arena/leaderboard (INTERFACES §5.4). */
+export type ArenaLeaderboardEntry = {
+  walletAddress: string;
+  nickname: string;
+  model: string;
+  hands: number;
+  netChips: number;
+  movesVerified: number;
+  lastSeen?: string | number | null;
+};
+
+/** GET /arena/moves/:handId (INTERFACES §5.4) — one accepted TEE move. */
+export type ArenaMoveRecord = {
+  handId: string;
+  gameId: string;
+  playerId: string;
+  nickname?: string;
+  action: 'fold' | 'check' | 'call' | 'raise' | string;
+  amount?: number | null;
+  challenge: string;
+  completionId: string;
+  model: string;
+  signingAddress: string;
+  signedText: string;
+  signature: string;
+  verifiedAt: string | number;
+};
+
 /** GET /hands/:handId (INTERFACES §4). */
 export type HandRecord = {
   handId: string;
@@ -101,6 +155,8 @@ export type PublicGameView = {
     chosenCommunity: number[];
     weight: number;
     bot?: BotInfo;
+    /** Arena tables only (INTERFACES §5.4). */
+    agent?: AgentInfo;
   }>;
   communityCards: number[];
   pot: number;
@@ -121,6 +177,8 @@ export type PublicGameView = {
   myPlayerId: string | null;
   isMyTurn: boolean;
   fairness?: FairnessView;
+  /** Agent Arena table: hands auto-start, humans only watch (INTERFACES §5.2). */
+  arena?: boolean;
 };
 
 export type NearProofBody = {
@@ -188,13 +246,52 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return data;
 }
 
+/**
+ * Like `request`, but a missing endpoint (404) resolves to `fallback`, so
+ * pages render while the server side of a feature is still being built.
+ */
+async function requestOr<T>(path: string, fallback: T): Promise<T> {
+  const res = await fetch(`${env.NEXT_PUBLIC_API_URL}${path}`, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (res.status === 404) return fallback;
+  let data: unknown = null;
+  try {
+    data = await res.json();
+  } catch {
+    if (res.ok) return fallback;
+  }
+  if (!res.ok) {
+    const err =
+      data && typeof data === 'object' && 'error' in data
+        ? String((data as { error: unknown }).error)
+        : `Request failed (${res.status})`;
+    throw new Error(err);
+  }
+  return data as T;
+}
+
+/** Accept either a bare array or `{ <key>: [...] }` from the server. */
+function listFrom<T>(data: unknown, key: string): T[] {
+  if (Array.isArray(data)) return data as T[];
+  if (data && typeof data === 'object') {
+    const v = (data as Record<string, unknown>)[key];
+    if (Array.isArray(v)) return v as T[];
+  }
+  return [];
+}
+
 export const api = {
   me: () => request<SessionUser>('/auth/me'),
   /** Server-issued one-time NEP-413 nonce (base64, 32 bytes, 5 min). */
   loginNonce: () =>
-    request<{ nonce: string; expiresAt: number; message: string; recipient: string }>(
-      '/auth/nonce'
-    ),
+    request<{
+      nonce: string;
+      expiresAt: number;
+      message: string;
+      recipient: string;
+    }>('/auth/nonce'),
   setNickname: (nickname: string) =>
     request<SessionUser>('/auth/nickname', {
       method: 'POST',
@@ -259,6 +356,33 @@ export const api = {
     const q = params.toString();
     return request<PlayerActivityPage>(`/auth/activity${q ? `?${q}` : ''}`);
   },
+  /** INTERFACES §5.4 — live arena tables (empty when the endpoint is absent). */
+  arenaTables: async () =>
+    listFrom<ArenaTable>(
+      await requestOr<unknown>('/arena/tables', []),
+      'tables'
+    ),
+  arenaLeaderboard: async () =>
+    listFrom<ArenaLeaderboardEntry>(
+      await requestOr<unknown>('/arena/leaderboard', []),
+      'entries'
+    ),
+  arenaMoves: async (handId: string) =>
+    listFrom<ArenaMoveRecord>(
+      await requestOr<unknown>(
+        `/arena/moves/${encodeURIComponent(handId)}`,
+        []
+      ),
+      'moves'
+    ),
+  /** INTERFACES §5.2 — agents normally call these from agent-starter. */
+  arenaJoin: () =>
+    request<{ queued?: boolean; position?: number; gameId?: string }>(
+      '/arena/join',
+      { method: 'POST', body: '{}' }
+    ),
+  arenaLeave: () =>
+    request<{ ok?: boolean }>('/arena/leave', { method: 'POST', body: '{}' }),
   getHand: (handId: string) =>
     request<HandRecord>(`/hands/${encodeURIComponent(handId)}`),
   /**

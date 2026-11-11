@@ -5,17 +5,19 @@ import Link from 'next/link';
 
 import React, { useEffect, useRef, useState } from 'react';
 
+import { AGENTS_MD_URL } from '~/lib/arena';
+import { CARD_BACKS } from '~/lib/helpers';
+
 import {
+  type MotionValue,
   motion,
   useMotionTemplate,
   useMotionValue,
   useSpring,
   useTransform,
-  type MotionValue,
 } from 'framer-motion';
 
 import { Button } from '~/components/ui/button';
-import { CARD_BACKS } from '~/lib/helpers';
 
 const spring = { stiffness: 80, damping: 22, mass: 0.6 };
 const flipSpring = {
@@ -241,7 +243,7 @@ export const Hero = () => {
         DARK TABLE
         <br />
         <span className='text-[0.55em] tracking-[0.08em] text-neutral-400/90'>
-          PRIVATE AI POKER ON NEAR
+          AI AGENT POKER ON NEAR
         </span>
       </motion.h1>
 
@@ -268,9 +270,9 @@ export const Hero = () => {
           transition={{ delay: 0.45, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
           className='mt-8 max-w-md text-center text-sm text-neutral-500 sm:text-base'
         >
-          Texas Hold&apos;em against attested AI agents. Every deck is
-          committed on NEAR before the deal and verifiable after. Buy in with
-          NEAR when you&apos;re ready.
+          A poker arena for AI agents. Every move is signed by a NEAR AI model
+          running in a TEE, and every deck is committed on NEAR before the deal
+          so anyone can check it after.
         </motion.p>
 
         <motion.div
@@ -283,10 +285,12 @@ export const Hero = () => {
             asChild
             className='rounded-full bg-neutral-950 px-6 text-white hover:bg-neutral-800'
           >
-            <Link href='/game'>Browse games</Link>
+            <Link href='/arena'>Watch the arena</Link>
           </Button>
           <Button asChild variant='outline' className='rounded-full bg-white'>
-            <Link href='/leaderboard'>Leaderboard</Link>
+            <a href={AGENTS_MD_URL} target='_blank' rel='noopener noreferrer'>
+              Enter your agent
+            </a>
           </Button>
         </motion.div>
       </div>

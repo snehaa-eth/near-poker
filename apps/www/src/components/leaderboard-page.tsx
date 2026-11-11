@@ -1,14 +1,19 @@
 'use client';
 
-import React from 'react';
-
-import { Trophy } from 'lucide-react';
+import React, { useState } from 'react';
 
 import { type LeaderboardEntry } from '~/lib/api';
 import { formatTokens } from '~/lib/format';
 import { useLeaderboard } from '~/lib/hooks';
 import { cn } from '~/lib/utils';
+
 import { useSession } from '~/providers/session-provider';
+
+import { AgentLeaderboard } from './arena/agent-leaderboard';
+
+import { Trophy } from 'lucide-react';
+
+type Tab = 'agents' | 'players';
 
 function rankStyle(rank: number) {
   if (rank === 1) return 'bg-[#F5C542] text-neutral-950';
@@ -89,8 +94,15 @@ function Row({
   );
 }
 
-export const LeaderboardPage = () => {
+export const LeaderboardPage = ({
+  mock = false,
+  initialTab = 'agents',
+}: {
+  mock?: boolean;
+  initialTab?: Tab;
+}) => {
   const { user } = useSession();
+  const [tab, setTab] = useState<Tab>(initialTab);
   const { data, isLoading, isError, error, refetch, isFetching } =
     useLeaderboard(50);
 
@@ -107,46 +119,79 @@ export const LeaderboardPage = () => {
             Leaderboard
           </h1>
           <p className='mt-2 max-w-xl text-neutral-600'>
-            Ranked by table wins, then pots collected, then chip stack.
+            {tab === 'agents'
+              ? 'TEE-verified AI agents in the arena, ranked by net chips.'
+              : 'Ranked by table wins, then pots collected, then chip stack.'}
           </p>
         </div>
-        <button
-          type='button'
-          onClick={() => void refetch()}
-          className='rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50'
-        >
-          {isFetching ? 'Refreshing…' : 'Refresh'}
-        </button>
+        {tab === 'players' ? (
+          <button
+            type='button'
+            onClick={() => void refetch()}
+            className='rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50'
+          >
+            {isFetching ? 'Refreshing…' : 'Refresh'}
+          </button>
+        ) : null}
       </div>
 
-      <section className='mt-8 space-y-3'>
-        {isLoading && (
-          <p className='text-sm text-neutral-500'>Loading standings…</p>
-        )}
-        {isError && (
-          <p className='text-sm text-red-600'>
-            {error instanceof Error ? error.message : 'Failed to load'}
-          </p>
-        )}
-        {!isLoading && !isError && entries.length === 0 && (
-          <div className='rounded-[1.5rem] border border-dashed border-neutral-300 bg-white/60 px-5 py-10 text-center'>
-            <Trophy className='mx-auto h-8 w-8 text-neutral-400' />
-            <p className='mt-3 text-sm font-medium text-neutral-900'>
-              No results yet
-            </p>
-            <p className='mt-1 text-sm text-neutral-500'>
-              Finish a few hands and winners will show up here.
-            </p>
-          </div>
-        )}
-        {entries.map((entry) => (
-          <Row
-            key={entry.sessionId}
-            entry={entry}
-            highlight={Boolean(user && user.sessionId === entry.sessionId)}
-          />
+      <div className='mt-6 flex gap-2'>
+        {(
+          [
+            { id: 'agents', label: 'Agents' },
+            { id: 'players', label: 'Players' },
+          ] as const
+        ).map((t) => (
+          <button
+            key={t.id}
+            type='button'
+            className={cn(
+              'rounded-full border px-3 py-1.5 text-sm font-medium transition',
+              tab === t.id
+                ? 'border-neutral-900 bg-neutral-950 text-white'
+                : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
+            )}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
         ))}
-      </section>
+      </div>
+
+      {tab === 'agents' ? (
+        <section className='mt-6'>
+          <AgentLeaderboard mock={mock} />
+        </section>
+      ) : (
+        <section className='mt-6 space-y-3'>
+          {isLoading && (
+            <p className='text-sm text-neutral-500'>Loading standings…</p>
+          )}
+          {isError && (
+            <p className='text-sm text-red-600'>
+              {error instanceof Error ? error.message : 'Failed to load'}
+            </p>
+          )}
+          {!isLoading && !isError && entries.length === 0 && (
+            <div className='rounded-[1.5rem] border border-dashed border-neutral-300 bg-white/60 px-5 py-10 text-center'>
+              <Trophy className='mx-auto h-8 w-8 text-neutral-400' />
+              <p className='mt-3 text-sm font-medium text-neutral-900'>
+                No results yet
+              </p>
+              <p className='mt-1 text-sm text-neutral-500'>
+                Finish a few hands and winners will show up here.
+              </p>
+            </div>
+          )}
+          {entries.map((entry) => (
+            <Row
+              key={entry.sessionId}
+              entry={entry}
+              highlight={Boolean(user && user.sessionId === entry.sessionId)}
+            />
+          ))}
+        </section>
+      )}
     </div>
   );
 };

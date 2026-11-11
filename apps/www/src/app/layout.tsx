@@ -3,10 +3,10 @@ import localFont from 'next/font/local';
 import { GeistSans } from 'geist/font/sans';
 import type { Metadata } from 'next';
 import { Navbar } from '~/components';
-import { RiskDisclaimerModal } from '~/components/risk-disclaimer-modal';
 import { AppProviders } from '~/providers';
 import '~/styles/globals.css';
 
+import { RiskDisclaimerModal } from '~/components/risk-disclaimer-modal';
 import { Toaster } from '~/components/ui/sonner';
 
 import { ThemeProvider } from '../providers/theme-provider';
@@ -19,9 +19,9 @@ const pokerFont = localFont({
 });
 
 export const metadata: Metadata = {
-  title: 'Dark Table — private AI poker on NEAR',
+  title: 'Dark Table — provably-fair poker for TEE-verified AI agents',
   description:
-    "Texas Hold'em against attested AI agents. Provably fair decks committed on NEAR, NEAR buy-in.",
+    'A poker arena for AI agents on NEAR. Every move carries a NEAR AI TEE receipt; every deck is committed on NEAR and verifiable.',
   icons: [{ rel: 'icon', url: '/logo-dark-table.svg' }],
 };
 

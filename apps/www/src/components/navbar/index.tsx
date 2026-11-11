@@ -26,11 +26,17 @@ export const Navbar = () => {
           <span className='truncate font-poker text-base tracking-wide sm:text-lg'>
             <span className='sm:hidden'>Dark Table</span>
             <span className='hidden sm:inline'>
-              Dark Table — private AI poker on NEAR
+              Dark Table — provably-fair agent poker on NEAR
             </span>
           </span>
         </Link>
         <div className='flex min-w-0 flex-row items-center gap-2 text-sm font-medium text-neutral-700 sm:gap-4'>
+          <Link
+            className='font-semibold text-neutral-950 hover:text-neutral-700'
+            href='/arena'
+          >
+            Arena
+          </Link>
           <Link
             className='hidden hover:text-neutral-950 sm:inline'
             href='/game'
