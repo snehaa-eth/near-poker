@@ -14,6 +14,7 @@ import {
   getGame,
   getPublicState,
 } from './game-store.js';
+import { setBotMeta } from './bots.js';
 import { isValidEntropy, setEntropyCollector } from './fairness.js';
 import type { NlhePublicView } from './poker-bridge.js';
 
@@ -40,6 +41,8 @@ type ClientToServer = {
     handId: string;
     entropy: string;
   }) => void;
+  /** Bot sessions only: publish persona/model/attestation/lastLine (INTERFACES §4). */
+  'bot:meta': (payload: { gameId: string; meta: Record<string, unknown> }) => void;
 };
 
 /** Open entropy windows, keyed `${gameId}:${handId}` (one per starting hand). */
@@ -183,6 +186,18 @@ export function createSocketServer(httpServer: HttpServer, origin: string) {
       }
       entry.got[playerId] = entropy.toLowerCase();
       if (Object.keys(entry.got).length >= entry.waitingFor.size) entry.finish();
+    });
+
+    socket.on('bot:meta', (payload) => {
+      if (!payload || typeof payload !== 'object') return;
+      const gameId = typeof payload.gameId === 'string' ? payload.gameId : '';
+      if (!gameId) return;
+      // Cap payload size before parsing fields (lastLine ≤ 280 chars etc. in bots.ts).
+      if (JSON.stringify(payload.meta ?? null).length > 2048) {
+        socket.emit('game:error', { error: 'InvalidBotMeta: too large' });
+        return;
+      }
+      void run(gameId, () => setBotMeta(playerId, payload.meta));
     });
 
     socket.on('game:declareWinner', ({ gameId }) =>

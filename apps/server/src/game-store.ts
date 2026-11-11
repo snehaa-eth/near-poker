@@ -8,6 +8,7 @@ import {
   ENTROPY_TIMEOUT_MS,
   newServerSeed,
 } from './fairness.js';
+import { getBotMetaFor } from './bots.js';
 import { getLedger } from './ledger.js';
 import {
   createEmptyNlheLobby,
@@ -389,6 +390,13 @@ export async function getPublicState(
   const state = await load(gameId);
   if (!state) return null;
   const view = toNlhePublicView(state, viewerId);
+  const bots = await getBotMetaFor(view.players.map((p) => p.id));
+  if (bots.size > 0) {
+    view.players = view.players.map((p) => {
+      const bot = bots.get(p.id);
+      return bot ? { ...p, bot: { ...bot } } : p;
+    });
+  }
   if (view.fairness) {
     const txs = txCache.get(view.fairness.handId);
     if (txs?.commit && !view.fairness.committedTx) view.fairness.committedTx = txs.commit;
@@ -805,4 +813,22 @@ export async function actionDeclareWinner(gameId: string, actorId?: string) {
     return settled;
   }
   throw new Error('HandNotComplete');
+}
+
+/**
+ * True while the player sits in a hand that is committed but not complete
+ * (including the commit → entropy window). Their vault balance is locked
+ * on chain then, so chip re-syncs from the vault must wait.
+ */
+export async function isInActiveHand(sessionId: string): Promise<boolean> {
+  const docs = await GameModel.find({ playerIds: sessionId })
+    .select('gameId')
+    .lean();
+  for (const d of docs) {
+    if (starting.has(d.gameId)) return true;
+    const state = memory.get(d.gameId) ?? (await load(d.gameId));
+    const street = state?.nlhe?.street;
+    if (street && street !== 'complete' && street !== 'waiting') return true;
+  }
+  return false;
 }

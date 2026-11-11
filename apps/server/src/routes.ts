@@ -1,6 +1,9 @@
 import { Router } from 'express';
 
-import { SESSION_COOKIE, getSession } from './auth.js';
+import { SESSION_COOKIE, getSession, toSessionJson } from './auth.js';
+import { upsertBotSession } from './bots.js';
+import { syncChipsFromChain } from './chips.js';
+import { isNearChain } from './near.js';
 import {
   clearAdminCookie,
   isAdminRequest,
@@ -159,4 +162,41 @@ adminRouter.post('/logout', (_req, res) => {
 
 adminRouter.get('/me', (req, res) => {
   res.json({ admin: isAdminRequest(req) });
+});
+
+/**
+ * Admin-only: create/return a bot session bound to an operator-controlled NEAR
+ * account, without a NEP-413 proof. Sets the session cookie on the caller.
+ * Body: { nickname, walletAddress } — walletAddress optional when CHAIN!=near;
+ * must end with `.${BOT_ACCOUNT_SUFFIX}` when that env is set.
+ */
+adminRouter.post('/bot-session', requireAdmin, async (req, res) => {
+  try {
+    const near = isNearChain();
+    const doc = await upsertBotSession({
+      nickname: String(req.body?.nickname ?? ''),
+      walletAddress:
+        req.body?.walletAddress == null ? null : String(req.body.walletAddress),
+      near,
+      suffix: process.env.BOT_ACCOUNT_SUFFIX,
+    });
+    let chainError: string | undefined;
+    if (near) {
+      try {
+        const sync = await syncChipsFromChain(doc.sessionId);
+        doc.chips = sync.chips;
+      } catch (e) {
+        chainError = e instanceof Error ? e.message : String(e);
+      }
+    }
+    res.cookie(SESSION_COOKIE, doc.sessionId, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 1000 * 60 * 60 * 24 * 30,
+    });
+    res.json({ ...toSessionJson(doc), bot: true, ...(chainError ? { chainError } : {}) });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(400).json({ error: message });
+  }
 });

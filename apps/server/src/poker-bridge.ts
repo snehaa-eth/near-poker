@@ -363,7 +363,17 @@ export function stacksFromNlhe(
   return out;
 }
 
-export type NlhePublicView = PublicGameView & {
+/** INTERFACES.md §4 `players[i].bot`. */
+export type PublicBotInfo = {
+  persona: string;
+  model?: string;
+  attested?: boolean;
+  signingAddress?: string;
+  lastLine?: string;
+};
+
+export type NlhePublicView = Omit<PublicGameView, 'players'> & {
+  players: Array<PublicGameView['players'][number] & { bot?: PublicBotInfo }>;
   minRaise: number;
   dealerSeat: number;
   stacksByPlayerId: Record<string, number>;

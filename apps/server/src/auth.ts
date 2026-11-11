@@ -1,9 +1,72 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 
+import { randomBytes } from 'node:crypto';
+
+import { syncChipsFromChain } from './chips.js';
 import { PlayerActivityModel, SessionModel } from './db.js';
+import {
+  LOGIN_MESSAGE,
+  LOGIN_RECIPIENT,
+  isNearChain,
+  parseNearProof,
+  verifyNearProof,
+  type AccessKeyChecker,
+} from './near.js';
 
 export const SESSION_COOKIE = 'poker_session';
+export const NONCE_COOKIE = 'poker_login_nonce';
+const NONCE_TTL_MS = 5 * 60 * 1000;
+
+/** Server-issued NEP-413 login nonces (base64) → expiry. Single use. */
+const issuedNonces = new Map<string, number>();
+/** Client-generated nonces already used (legacy, CHAIN!=near only) → expiry. */
+const usedClientNonces = new Map<string, number>();
+
+function pruneNonces(now = Date.now()) {
+  for (const m of [issuedNonces, usedClientNonces]) {
+    for (const [k, exp] of m) if (exp <= now) m.delete(k);
+  }
+}
+
+export function issueLoginNonce(now = Date.now()) {
+  pruneNonces(now);
+  const nonce = randomBytes(32).toString('base64');
+  issuedNonces.set(nonce, now + NONCE_TTL_MS);
+  return { nonce, expiresAt: now + NONCE_TTL_MS };
+}
+
+/**
+ * Consume a login nonce. Server-issued nonces are accepted once within 5 min
+ * (and must match the nonce cookie when the browser sent one). Client-made
+ * nonces are accepted once, only when CHAIN!=near (legacy web build).
+ */
+export function consumeLoginNonce(
+  nonce: string,
+  opts: { cookieNonce?: string; near: boolean; now?: number }
+): { ok: true } | { ok: false; reason: string } {
+  const now = opts.now ?? Date.now();
+  pruneNonces(now);
+  if (Buffer.from(nonce, 'base64').length !== 32) return { ok: false, reason: 'BadNonce' };
+  const exp = issuedNonces.get(nonce);
+  if (exp !== undefined) {
+    if (opts.cookieNonce && opts.cookieNonce !== nonce) {
+      return { ok: false, reason: 'NonceCookieMismatch' };
+    }
+    issuedNonces.delete(nonce);
+    return { ok: true };
+  }
+  if (opts.near) return { ok: false, reason: 'UnknownOrExpiredNonce' };
+  if (usedClientNonces.has(nonce)) return { ok: false, reason: 'NonceReused' };
+  usedClientNonces.set(nonce, now + NONCE_TTL_MS * 2);
+  return { ok: true };
+}
+
+/** Test hook for the RPC access-key check. */
+let accessKeyChecker: AccessKeyChecker | undefined;
+export function setAccessKeyChecker(fn: AccessKeyChecker | undefined) {
+  accessKeyChecker = fn;
+}
 
 const AVATAR_RE = /^\/png\/[a-z0-9_]+\.png$/i;
 
@@ -20,7 +83,7 @@ function sessionCookieOptions() {
   };
 }
 
-function toSessionJson(session: {
+export function toSessionJson(session: {
   sessionId: string;
   nickname: string;
   chips?: number | null;
@@ -51,10 +114,21 @@ function parseAvatar(
 
 function normalizeWallet(raw: unknown) {
   const wallet = String(raw ?? '').trim();
-  return wallet.length >= 8 ? wallet : null;
+  return wallet.length >= 2 && wallet.length <= 128 ? wallet : null;
 }
 
 export const authRouter = Router();
+
+/** Fresh NEP-413 nonce for the wallet to sign (required when CHAIN=near). */
+authRouter.get('/nonce', (_req, res) => {
+  const { nonce, expiresAt } = issueLoginNonce();
+  res.cookie(NONCE_COOKIE, nonce, {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: NONCE_TTL_MS,
+  });
+  res.json({ nonce, expiresAt, message: LOGIN_MESSAGE, recipient: LOGIN_RECIPIENT });
+});
 
 authRouter.post('/nickname', async (req, res) => {
   const nickname = normalizeNickname(req.body?.nickname);
@@ -85,14 +159,44 @@ authRouter.post('/nickname', async (req, res) => {
 });
 
 /**
- * Upsert profile keyed by Midnight wallet address.
- * Body: { walletAddress, nickname?, avatar? }
+ * Upsert profile keyed by NEAR account id.
+ * Body: { walletAddress, nickname?, avatar?, nearProof? }
+ * `nearProof` is a NEP-413 signature of LOGIN_MESSAGE for LOGIN_RECIPIENT with a
+ * nonce from GET /auth/nonce. Required when CHAIN=near; verified when present otherwise.
  */
 authRouter.post('/profile', async (req, res) => {
   const walletAddress = normalizeWallet(req.body?.walletAddress);
   if (!walletAddress) {
     res.status(400).json({ error: 'walletAddress is required.' });
     return;
+  }
+
+  const near = isNearChain();
+  const rawProof = req.body?.nearProof;
+  if (near || rawProof != null) {
+    const proof = parseNearProof(rawProof);
+    if (!proof) {
+      res.status(401).json({ error: near ? 'NearProofRequired' : 'InvalidNearProof' });
+      return;
+    }
+    if (proof.accountId !== walletAddress) {
+      res.status(401).json({ error: 'ProofAccountMismatch' });
+      return;
+    }
+    const verified = await verifyNearProof(proof, { checkAccessKey: accessKeyChecker });
+    if (!verified.ok) {
+      res.status(401).json({ error: `InvalidNearProof: ${verified.reason}` });
+      return;
+    }
+    const nonceOk = consumeLoginNonce(proof.nonce, {
+      cookieNonce: req.cookies?.[NONCE_COOKIE] as string | undefined,
+      near,
+    });
+    if (!nonceOk.ok) {
+      res.status(401).json({ error: `InvalidNearProof: ${nonceOk.reason}` });
+      return;
+    }
+    res.clearCookie(NONCE_COOKIE);
   }
 
   const nicknameRaw = req.body?.nickname;
@@ -138,10 +242,7 @@ authRouter.post('/profile', async (req, res) => {
       walletAddress,
       nickname:
         nickname ??
-        `mn_${walletAddress.replace(/[^a-zA-Z0-9]/g, '').slice(-6)}`.slice(
-          0,
-          24
-        ),
+        (walletAddress.split('.')[0]!.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24).padEnd(2, '_')),
       avatar: avatarUpdate ?? null,
       chips: 0,
     });
@@ -150,6 +251,16 @@ authRouter.post('/profile', async (req, res) => {
     if (avatarUpdate !== undefined) session.avatar = avatarUpdate;
     if (!session.walletAddress) session.walletAddress = walletAddress;
     await session.save();
+  }
+
+  if (near) {
+    // Chips are backed by the vault: pick up the on-chain balance at login.
+    try {
+      const sync = await syncChipsFromChain(session.sessionId);
+      session.chips = sync.chips;
+    } catch (e) {
+      console.warn('[auth] vault sync at login failed:', e instanceof Error ? e.message : e);
+    }
   }
 
   res.cookie(SESSION_COOKIE, session.sessionId, sessionCookieOptions());
@@ -231,7 +342,9 @@ authRouter.get('/activity', async (req, res) => {
       type: doc.type,
       gameId: doc.gameId ?? null,
       amountChips: doc.amountChips ?? null,
-      amountNight: doc.amountNight ?? null,
+      amountNear: doc.amountNear ?? doc.amountNight ?? null,
+      /** @deprecated legacy alias of amountNear */
+      amountNight: doc.amountNear ?? doc.amountNight ?? null,
       balanceAfter: doc.balanceAfter ?? null,
       summary: doc.summary,
       payload: doc.payload ?? {},

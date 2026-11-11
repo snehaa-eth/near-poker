@@ -4,7 +4,7 @@ import type { GameState } from 'game-engine';
 const sessionSchema = new Schema(
   {
     sessionId: { type: String, required: true, unique: true, index: true },
-    /** Midnight unshielded address — profile + chips keyed to this when set. */
+    /** NEAR account id — profile + chips keyed to this when set. */
     walletAddress: {
       type: String,
       required: false,
@@ -16,6 +16,10 @@ const sessionSchema = new Schema(
     /** Public path under /png/… */
     avatar: { type: String, required: false },
     chips: { type: Number, default: 10000 },
+    /** Operator-controlled bot session (POST /admin/bot-session). */
+    isBot: { type: Boolean, default: false },
+    /** Public bot metadata (persona/model/attestation/lastLine), see INTERFACES §4. */
+    botMeta: { type: Schema.Types.Mixed, default: null },
   },
   { timestamps: { createdAt: true, updatedAt: true } }
 );
@@ -172,6 +176,9 @@ const playerActivitySchema = new Schema(
     type: { type: String, required: true, index: true },
     gameId: { type: String, default: null, index: true },
     amountChips: { type: Number, default: null },
+    /** NEAR amount (decimal). */
+    amountNear: { type: Number, default: null },
+    /** Legacy (Midnight build) — read-only fallback for old rows. */
     amountNight: { type: Number, default: null },
     balanceAfter: { type: Number, default: null },
     summary: { type: String, required: true },
@@ -192,6 +199,7 @@ export type PlayerActivityDoc = {
   type: string;
   gameId?: string | null;
   amountChips?: number | null;
+  amountNear?: number | null;
   amountNight?: number | null;
   balanceAfter?: number | null;
   summary: string;
@@ -212,7 +220,7 @@ export type RecordPlayerActivityInput = {
   summary: string;
   gameId?: string | null;
   amountChips?: number | null;
-  amountNight?: number | null;
+  amountNear?: number | null;
   balanceAfter?: number | null;
   payload?: Record<string, unknown>;
 };
@@ -226,7 +234,7 @@ export async function recordPlayerActivity(input: RecordPlayerActivityInput) {
     summary: input.summary,
     gameId: input.gameId ?? null,
     amountChips: input.amountChips ?? null,
-    amountNight: input.amountNight ?? null,
+    amountNear: input.amountNear ?? null,
     balanceAfter: input.balanceAfter ?? null,
     payload: input.payload ?? {},
   });

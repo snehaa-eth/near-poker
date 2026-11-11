@@ -6,8 +6,13 @@
  *   HANDS=10 pnpm --filter server bots
  *
  * Each bot is a normal player: its own session, its own socket, and it only sees its own
- * hole cards (the server hides everyone else's until showdown). Chips come from the
- * server's off-chain /treasury/deposit (no chain involved).
+ * hole cards (the server hides everyone else's until showdown). Sessions are created via
+ * admin login + POST /admin/bot-session (flagged as bots → `players[i].bot` in the view).
+ *
+ *  - default: chips come from the server's off-chain /treasury/deposit (1.5 NEAR = 1500 chips).
+ *  - BOT_ACCOUNTS=rock.x.testnet,maniac.x.testnet,... (server CHAIN=near): each bot is bound
+ *    to that NEAR account and its chips are its `table-vault` balance (GET /treasury/sync).
+ *    Fund the accounts' vault balances first (vault.deposit from each sub-account).
  *
  * Provably fair: every bot answers `game:entropyRequest` with 16 random bytes, and after
  * each hand the script fetches GET /hands/:handId and independently re-derives the deck
@@ -193,18 +198,33 @@ async function main() {
   const game = await api(admin, '/games', { name: 'Bot Table (6 AIs)', minChips: 100, maxPlayers: 6 });
   const gameId = game.gameId as string;
 
+  const accounts = (process.env.BOT_ACCOUNTS ?? '').split(',').map((a) => a.trim()).filter(Boolean);
+  const styles = accounts.length > 0 ? BOTS.slice(0, accounts.length) : BOTS;
+  if (accounts.length === 1) throw new Error('BOT_ACCOUNTS needs at least 2 accounts');
+
   const bots: Bot[] = [];
-  for (const style of BOTS) {
+  for (const [i, style] of styles.entries()) {
     const jar: Jar = new Map();
-    const me = await api(jar, '/auth/nickname', { nickname: `${style.name}Bot` });
-    await api(jar, '/treasury/deposit', { nightAmount: 1000 }); // off-chain demo chips
+    await api(jar, '/admin/login', { password: process.env.ADMIN_PASSWORD ?? 'admin123' });
+    const me = await api(jar, '/admin/bot-session', {
+      nickname: `${style.name}Bot`,
+      ...(accounts[i] ? { walletAddress: accounts[i] } : {}),
+    });
+    if (accounts[i]) {
+      const sync = await api(jar, '/treasury/sync'); // chips = vault balance / 10^21
+      console.log(`   ${style.emoji} ${style.name} → ${accounts[i]}  ${sync.chips} chips (vault ${sync.vaultYocto ?? '?'} yocto)`);
+      if (Number(sync.chips ?? 0) < 100) throw new Error(`${accounts[i]} has < 100 chips in the vault; deposit first`);
+    } else {
+      await api(jar, '/treasury/deposit', { nearAmount: 1.5 }); // off-chain demo chips (1500)
+    }
     await api(jar, `/games/${gameId}/join`, {});
     const sock = io(API, { transports: ['websocket'], extraHeaders: { cookie: [...jar].map(([k, v]) => `${k}=${v}`).join('; ') } });
     await new Promise<void>((ok, bad) => { sock.on('connect', () => ok()); sock.on('connect_error', bad); });
+    sock.emit('bot:meta', { gameId, meta: { persona: style.name, model: 'heuristic-v1', attested: false } });
     bots.push({ style, jar, sock, id: String((me as { sessionId?: string }).sessionId ?? '') });
   }
 
-  console.log(`\n🃏 6 bots seated at table ${gameId.slice(0, 8)} (blinds 5/10, 1500 chips each)`);
+  console.log(`\n🃏 ${bots.length} bots seated at table ${gameId.slice(0, 8)} (blinds 5/10${accounts.length ? ', chips from vault' : ', 1500 chips each'})`);
   console.log(`   watch in the browser: ${WEB}/game/${gameId}\n`);
 
   let hand = 0;
@@ -313,6 +333,7 @@ async function main() {
           const label = d.kind === 'raise' ? `raises to ${d.amount}` : d.kind === 'call' ? `calls ${Math.max(0, v.highestBet - me!.chipsInPot)}` : d.kind === 'check' ? 'checks' : 'folds';
           inHand.add(me!.id);
           console.log(`  ${bot.style.emoji} ${bot.style.name.padEnd(7)} [${hole}]  ${label.padEnd(16)} (${d.say})`);
+          bot.sock.emit('bot:meta', { gameId, meta: { lastLine: d.say } });
           if (d.kind === 'fold') bot.sock.emit('game:fold', { gameId });
           else bot.sock.emit('game:bet', { gameId, amount: d.amount });
           acting = false;
@@ -327,7 +348,7 @@ async function main() {
   startHand();
   await Promise.race([done, new Promise((_, bad) => setTimeout(() => bad(new Error('timeout')), 10 * 60_000))]);
   await Promise.all(verifications);
-  console.log(`✅ ${hand} hands played by 6 bots. Table: ${WEB}/game/${gameId}`);
+  console.log(`✅ ${hand} hands played by ${bots.length} bots. Table: ${WEB}/game/${gameId}`);
   const allOk = failed === 0 && verified === hand;
   console.log(`${allOk ? '🔐' : '🚨'} ${verified}/${hand} hands verified provably fair${failed ? ` (${failed} FAILED)` : ''}`);
   if (fingerprints[0]) console.log(`   first deckSeed this run: ${fingerprints[0]}`);
