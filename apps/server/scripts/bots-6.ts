@@ -20,6 +20,14 @@
  * Exits non-zero if any hand fails verification.
  *
  * FAST headless mode:  HANDS=10 STEP_MS=30 START_DELAY_MS=0 npx tsx scripts/bots-6.ts
+ *
+ * LLM brains (NEAR AI Cloud, TEE inference): set NEARAI_API_KEY (and not FAST=1). Each decision
+ * goes to the model with the bot's persona, its OWN hole cards and the public table state; the
+ * response signature is checked against the nonce-bound attestation report (src/brain/nearai.ts).
+ * Falls back to the rule bot on timeout / error / illegal output, or after MAX_LLM_CALLS (200).
+ *   NEARAI_MODEL (default Qwen/Qwen3.6-35B-A3B-FP8), LLM_TIMEOUT_MS (default 6000),
+ *   NEARAI_BASE_URL (default https://cloud-api.near.ai/v1; point at a mock for offline tests)
+ * Output marker per action: 🧠 = LLM move (✔ signature verified), 📏 = rules.
  */
 import { randomBytes } from 'node:crypto';
 
@@ -34,11 +42,18 @@ import {
   shuffleFromSeed,
 } from '@nli/poker-engine';
 
+import { createBrain, NEARAI_DEFAULT_MODEL, type AttestationSummary, type Brain } from '../src/brain/nearai.js';
+import { decideMove, legalizeRules, type DecidedMove } from '../src/brain/decide.js';
+import type { Snapshot } from '../src/brain/prompt.js';
+
 const API = process.env.API_URL ?? 'http://localhost:4000';
 const WEB = process.env.WEB_URL ?? 'http://localhost:3000';
 const HANDS = Number(process.env.HANDS ?? 5);
 const STEP_MS = Number(process.env.STEP_MS ?? 1200);
 const START_DELAY_MS = Number(process.env.START_DELAY_MS ?? 10000);
+const FAST = process.env.FAST === '1';
+const MAX_LLM_CALLS = Number(process.env.MAX_LLM_CALLS ?? 200);
+const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 6000);
 
 type Style = { name: string; emoji: string; loose: number; aggro: number; bluff: number };
 const BOTS: Style[] = [
@@ -61,6 +76,7 @@ type View = {
   pot: number;
   highestBet: number;
   minRaise: number;
+  dealerSeat?: number;
   stacksByPlayerId: Record<string, number>;
   nextPlayerId: string | null;
   winnerNickname: string | null;
@@ -191,10 +207,51 @@ function decide(bot: Style, v: View): Decision {
 
 type Bot = { style: Style; jar: Jar; sock: Socket; id: string };
 
+const cardsOf = (ui: number[]) => show(ui).split(' ').filter(Boolean);
+
+/** Only this bot's own hole cards + public state (see src/brain/prompt.ts). */
+function snapshotOf(bot: Style, v: View, recent: string[]): Snapshot {
+  const me = v.players.find((p) => p.id === v.myPlayerId)!;
+  return {
+    persona: bot.name,
+    hole: cardsOf(me.holeCards),
+    board: cardsOf(v.communityCards),
+    street: v.roundLabel || v.round,
+    pot: v.pot,
+    highestBet: v.highestBet,
+    chipsInPot: me.chipsInPot,
+    minRaise: v.minRaise,
+    stack: v.stacksByPlayerId[me.id] ?? 0,
+    seat: me.seat,
+    dealerSeat: v.dealerSeat,
+    numPlayers: v.players.length,
+    activePlayers: v.players.filter((p) => !p.folded).length,
+    recent: [...recent],
+  };
+}
+
 async function main() {
   const admin: Jar = new Map();
   await api(admin, '/auth/nickname', { nickname: 'Dealer' });
   await api(admin, '/admin/login', { password: process.env.ADMIN_PASSWORD ?? 'admin123' });
+  // ── LLM brain (optional) ──
+  const apiKey = process.env.NEARAI_API_KEY;
+  let brain: Brain | null = null;
+  let attestation: AttestationSummary | null = null;
+  if (apiKey && !FAST) {
+    brain = createBrain({ apiKey, model: process.env.NEARAI_MODEL || NEARAI_DEFAULT_MODEL, baseUrl: process.env.NEARAI_BASE_URL || undefined, timeoutMs: LLM_TIMEOUT_MS });
+    attestation = await brain.attest();
+    const a = attestation;
+    console.log(
+      a.ok
+        ? `🧠 NEAR AI Cloud brain: ${brain.model}  attested (nonce ${a.nonce.slice(0, 12)}… echoed, signer ${a.signingAddresses[0]!.slice(0, 16)}…, ${a.modelAttestationCount} model attestation(s))`
+        : `🧠 NEAR AI Cloud brain: ${brain.model}  attestation NOT ok (${a.error ?? 'unknown'}) — moves still used, signatures will not verify`
+    );
+  } else {
+    console.log(`📏 rule bots (${FAST ? 'FAST=1' : 'no NEARAI_API_KEY'})`);
+  }
+  const llm = { calls: 0, used: 0, verified: 0, fallbacks: 0, latency: 0 };
+
   const game = await api(admin, '/games', { name: 'Bot Table (6 AIs)', minChips: 100, maxPlayers: 6 });
   const gameId = game.gameId as string;
 
@@ -220,7 +277,12 @@ async function main() {
     await api(jar, `/games/${gameId}/join`, {});
     const sock = io(API, { transports: ['websocket'], extraHeaders: { cookie: [...jar].map(([k, v]) => `${k}=${v}`).join('; ') } });
     await new Promise<void>((ok, bad) => { sock.on('connect', () => ok()); sock.on('connect_error', bad); });
-    sock.emit('bot:meta', { gameId, meta: { persona: style.name, model: 'heuristic-v1', attested: false } });
+    sock.emit('bot:meta', {
+      gameId,
+      meta: brain
+        ? { persona: style.name, model: brain.model, attested: !!attestation?.ok, ...(attestation?.signingAddresses[0] ? { signingAddress: attestation.signingAddresses[0] } : {}) }
+        : { persona: style.name, model: undefined, attested: false },
+    });
     bots.push({ style, jar, sock, id: String((me as { sessionId?: string }).sessionId ?? '') });
   }
 
@@ -232,6 +294,8 @@ async function main() {
   let acting = false;
   let lastPot = 0;
   let inHand = new Set<string>();
+  const actedOn = new Map<Bot, string>();
+  let handLog: string[] = []; // public actions this hand, fed to the LLM prompt
   // provably-fair bookkeeping
   const seenHole = new Map<string, Map<string, number[]>>(); // handId -> playerId -> engine ids
   const verifications: Promise<void>[] = [];
@@ -251,6 +315,7 @@ async function main() {
     hand += 1;
     lastRound = '';
     inHand = new Set();
+    handLog = [];
     console.log(`━━━━━━━━━━━━━━━━ HAND ${hand}/${HANDS} ━━━━━━━━━━━━━━━━`);
     bots[0]!.sock.emit('game:start', { gameId });
   };
@@ -325,18 +390,49 @@ async function main() {
         else setTimeout(startHand, STEP_MS * 3);
         return;
       }
-      if (v.isMyTurn && v.status === 'playing' && !acting) {
+      // Each turn is acted on once: duplicate/stale game:state snapshots (e.g. from the
+      // pre-flop game:joinRoom re-broadcast) used to make a bot act twice on the same view,
+      // and the second emit was rejected as IllegalBet.
+      const turnKey = `${v.fairness?.handId ?? hand}|${v.round}|${v.pot}|${v.highestBet}|${me?.chipsInPot}`;
+      if (v.isMyTurn && v.status === 'playing' && !acting && actedOn.get(bot) !== turnKey) {
+        actedOn.set(bot, turnKey);
         acting = true;
-        setTimeout(() => {
-          const d = decide(bot.style, v);
-          const hole = show(me!.holeCards);
-          const label = d.kind === 'raise' ? `raises to ${d.amount}` : d.kind === 'call' ? `calls ${Math.max(0, v.highestBet - me!.chipsInPot)}` : d.kind === 'check' ? 'checks' : 'folds';
-          inHand.add(me!.id);
-          console.log(`  ${bot.style.emoji} ${bot.style.name.padEnd(7)} [${hole}]  ${label.padEnd(16)} (${d.say})`);
-          bot.sock.emit('bot:meta', { gameId, meta: { lastLine: d.say } });
-          if (d.kind === 'fold') bot.sock.emit('game:fold', { gameId });
-          else bot.sock.emit('game:bet', { gameId, amount: d.amount });
-          acting = false;
+        setTimeout(async () => {
+          try {
+            const snap = snapshotOf(bot.style, v, handLog);
+            const rules = () => {
+              const r = decide(bot.style, v);
+              return { kind: r.kind, amount: r.amount, line: r.say };
+            };
+            let d: DecidedMove;
+            if (brain && llm.calls < MAX_LLM_CALLS) {
+              llm.calls += 1;
+              d = await decideMove(brain, snap, rules);
+              if (d.source === 'llm') {
+                llm.used += 1;
+                llm.latency += d.latencyMs ?? 0;
+                if (d.verified) llm.verified += 1;
+              } else llm.fallbacks += 1;
+            } else {
+              d = { ...legalizeRules(rules(), snap), source: 'rules' };
+            }
+            const hole = show(me!.holeCards);
+            const label = d.kind === 'raise' ? `raises to ${d.amount}` : d.kind === 'call' ? `calls ${Math.max(0, v.highestBet - me!.chipsInPot)}` : d.kind === 'check' ? 'checks' : 'folds';
+            const mark = d.source === 'llm' ? `🧠${d.verified ? '✔' : ' '}` : '📏 ';
+            const why = d.fallbackReason ? `  [fallback: ${d.fallbackReason.slice(0, 60)}]` : '';
+            const line = d.line || (d.source === 'rules' ? d.kind : '');
+            inHand.add(me!.id);
+            handLog.push(`${bot.style.name} ${label}`);
+            console.log(`  ${bot.style.emoji} ${bot.style.name.padEnd(7)} [${hole}]  ${mark} ${label.padEnd(16)} "${line}"${d.latencyMs ? ` ${d.latencyMs}ms` : ''}${why}`);
+            if (line) bot.sock.emit('bot:meta', { gameId, meta: { lastLine: line } });
+            if (d.kind === 'fold') bot.sock.emit('game:fold', { gameId });
+            else bot.sock.emit('game:bet', { gameId, amount: d.amount });
+          } catch (e) {
+            console.log(`   ⚠️  ${bot.style.name}: decision error ${(e as Error).message}; folding`);
+            bot.sock.emit('game:fold', { gameId });
+          } finally {
+            acting = false;
+          }
         }, STEP_MS);
       }
     });
@@ -352,6 +448,10 @@ async function main() {
   const allOk = failed === 0 && verified === hand;
   console.log(`${allOk ? '🔐' : '🚨'} ${verified}/${hand} hands verified provably fair${failed ? ` (${failed} FAILED)` : ''}`);
   if (fingerprints[0]) console.log(`   first deckSeed this run: ${fingerprints[0]}`);
+  if (brain) {
+    const avg = llm.used ? Math.round(llm.latency / llm.used) : 0;
+    console.log(`🧠 LLM: ${llm.calls} calls (budget ${MAX_LLM_CALLS}), ${llm.used} moves used, ${llm.verified} signature-verified, ${llm.fallbacks} fell back to rules, avg ${avg}ms`);
+  }
   for (const b of bots) b.sock.close();
   process.exit(allOk ? 0 : 1);
 }
