@@ -210,6 +210,9 @@ export function createBrain(opts: BrainOptions): Brain {
         messages,
         max_tokens: opts.maxTokens ?? 160,
         temperature: opts.temperature ?? 0.7,
+        // Qwen3 "thinks" before answering by default; a poker move doesn't need it
+        // (≈1 s and ~30 output tokens instead of hundreds).
+        chat_template_kwargs: { enable_thinking: false },
         ...(json ? { response_format: { type: 'json_object' } } : {}),
       });
       const res = await doFetch(`${baseUrl}/chat/completions`, {
