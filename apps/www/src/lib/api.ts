@@ -266,7 +266,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 async function requestOr<T>(path: string, fallback: T): Promise<T> {
   const res = await fetch(`${env.NEXT_PUBLIC_API_URL}${path}`, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': '1',
+    },
   });
   if (res.status === 404) return fallback;
   let data: unknown = null;
