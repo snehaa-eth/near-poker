@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
+import Link from 'next/link';
+
 import type { PublicGameView } from '~/lib/api';
 import { ChipAmount } from '~/components/currency-amount';
 import { playSound } from '~/lib/sounds';
@@ -54,7 +56,8 @@ export const SleekTable = ({
   const seatStacks = stacksByPlayerId ?? view.stacksByPlayerId;
   const defaultStack = stackOverride ?? user?.chips ?? 10000;
   const myStack =
-    (view.myPlayerId && seatStacks?.[view.myPlayerId]) ?? defaultStack;
+    (view.myPlayerId ? seatStacks?.[view.myPlayerId] : undefined) ??
+    defaultStack;
   const dealerSeat = view.dealerSeat ?? 0;
 
   const turnActive =
@@ -179,6 +182,25 @@ export const SleekTable = ({
                 {view.roundLabel}
               </span>
             </div>
+
+            {view.fairness ? (
+              view.fairness.revealed || view.gameEnded || view.round === 'End' ? (
+                <Link
+                  href={`/verify/${encodeURIComponent(view.fairness.handId)}`}
+                  target='_blank'
+                  className='rounded-full bg-emerald-50/95 px-3 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm ring-1 ring-emerald-200 transition hover:bg-white lg:text-xs'
+                >
+                  ✅ Verify hand
+                </Link>
+              ) : (
+                <span
+                  title={`Deck seed hash committed before the deal: ${view.fairness.seedHash}`}
+                  className='rounded-full bg-black/45 px-3 py-1 font-mono text-[11px] text-white/90 shadow-sm backdrop-blur-sm lg:text-xs'
+                >
+                  🔒 Deck committed · {view.fairness.seedHash.slice(0, 8)}
+                </span>
+              )
+            ) : null}
 
             <div className='flex min-h-[4.75rem] items-center gap-2 lg:min-h-[5.5rem] lg:gap-2.5 xl:min-h-[6rem]'>
               {board.length === 0 ? (

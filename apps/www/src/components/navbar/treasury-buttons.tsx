@@ -18,7 +18,7 @@ export function TreasuryButtons() {
       <div className='flex items-center gap-1'>
         <button
           type='button'
-          aria-label='Deposit NIGHT'
+          aria-label='Deposit NEAR'
           title='Deposit'
           onClick={() => {
             playSound('gems');
@@ -32,7 +32,7 @@ export function TreasuryButtons() {
         </button>
         <button
           type='button'
-          aria-label='Withdraw NIGHT'
+          aria-label='Withdraw NEAR'
           title='Withdraw'
           onClick={() => {
             playSound('cashout');

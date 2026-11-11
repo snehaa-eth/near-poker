@@ -6,7 +6,7 @@ import { formatTokens } from '~/lib/format';
 import { cn } from '~/lib/utils';
 
 export const CHIP_ICON = '/icons/poker-chip.png';
-export const NIGHT_ICON = '/cards/BACK-WHITE.png';
+export const NEAR_ICON = '/icons/near.svg';
 
 type Size = 'sm' | 'md' | 'lg';
 
@@ -81,7 +81,7 @@ export function ChipAmount({
   );
 }
 
-export function NightAmount({
+export function NearAmount({
   value,
   size = 'md',
   className,
@@ -96,7 +96,7 @@ export function NightAmount({
         className
       )}
     >
-      <CurrencyIcon src={NIGHT_ICON} size={size} className={iconClassName} />
+      <CurrencyIcon src={NEAR_ICON} size={size} className={iconClassName} />
       <span className='truncate leading-none'>{displayValue(value, raw)}</span>
     </span>
   );

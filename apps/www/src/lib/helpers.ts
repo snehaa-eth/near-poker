@@ -30,7 +30,7 @@ const ranks: Record<number, string> = {
   12: '1',
 };
 
-/** Midnight-style card backs — pick any at random on the table. */
+/** Card backs — pick any at random on the table. */
 export const CARD_BACKS = [
   '/cards/BACK-BLUE.png',
   '/cards/BACK-WHITE.png',

@@ -14,8 +14,8 @@ import {
 } from '~/components/ui/dialog';
 import { Label } from '~/components/ui/label';
 
-const STORAGE_KEY = 'midnight-poker-risk-accepted';
-const MIDSKILLS_URL = 'https://x.com/Midnight_Skills';
+const STORAGE_KEY = 'dark-table-risk-accepted';
+const NEAR_DOCS_URL = 'https://docs.near.org';
 
 export function RiskDisclaimerModal() {
   const [open, setOpen] = useState(false);
@@ -67,17 +67,17 @@ export function RiskDisclaimerModal() {
 
         <div className='space-y-4'>
           <p className='text-sm leading-relaxed text-neutral-600'>
-            Follow for more updates and build with the Midnight Skills knowledge
-            layer.
+            Dark Table runs on NEAR testnet. Decks are committed on-chain
+            before each hand and every hand can be verified afterwards.
           </p>
 
           <a
-            href={MIDSKILLS_URL}
+            href={NEAR_DOCS_URL}
             target='_blank'
             rel='noopener noreferrer'
             className='inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-4 py-2.5 text-sm font-medium text-neutral-950 transition-colors hover:bg-neutral-100'
           >
-            @Midnight_Skills
+            Build on NEAR
             <ExternalLink className='h-3.5 w-3.5 text-neutral-500' />
           </a>
 

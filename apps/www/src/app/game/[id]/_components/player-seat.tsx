@@ -1,13 +1,21 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+
+import type { BotInfo } from '~/lib/api';
+import { cn } from '~/lib/utils';
 
 import { ChipAmount } from '~/components/currency-amount';
-import { cn } from '~/lib/utils';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '~/components/ui/popover';
 
 import { SleekCard } from './sleek-card';
 
-import { BadgeCheck } from 'lucide-react';
+/** How long an agent's table talk stays on screen. */
+const SPEECH_MS = 5000;
 
 export type SeatPlayer = {
   id: string;
@@ -16,7 +24,69 @@ export type SeatPlayer = {
   chipsInPot: number;
   folded: boolean;
   holeCards: number[];
+  bot?: BotInfo;
 };
+
+function truncateMiddle(value: string, head = 6, tail = 4) {
+  return value.length <= head + tail + 1
+    ? value
+    : `${value.slice(0, head)}…${value.slice(-tail)}`;
+}
+
+function BotBadge({ bot }: { bot: BotInfo }) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        className='shrink-0 rounded-full bg-violet-100 px-1.5 py-[1px] text-[10px] font-semibold text-violet-800 ring-1 ring-violet-200 transition hover:bg-violet-200 lg:text-[11px]'
+        aria-label='AI agent details'
+      >
+        🤖 AI
+      </PopoverTrigger>
+      <PopoverContent
+        side='top'
+        className='w-64 rounded-2xl border-neutral-200 bg-white p-3 text-xs text-neutral-700'
+      >
+        <p className='text-sm font-semibold text-neutral-950'>{bot.persona}</p>
+        <dl className='mt-2 space-y-1'>
+          {bot.model ? (
+            <div className='flex justify-between gap-3'>
+              <dt className='text-neutral-400'>Model</dt>
+              <dd className='truncate font-mono'>{bot.model}</dd>
+            </div>
+          ) : null}
+          <div className='flex justify-between gap-3'>
+            <dt className='text-neutral-400'>Runtime</dt>
+            <dd
+              className={bot.attested ? 'text-emerald-700' : 'text-neutral-500'}
+            >
+              {bot.attested ? 'attested in TEE ✓' : 'not attested'}
+            </dd>
+          </div>
+          {bot.signingAddress ? (
+            <div className='flex justify-between gap-3'>
+              <dt className='text-neutral-400'>Signer</dt>
+              <dd className='font-mono' title={bot.signingAddress}>
+                {truncateMiddle(bot.signingAddress)}
+              </dd>
+            </div>
+          ) : null}
+        </dl>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** Shows the bot's latest line for a few seconds whenever it changes. */
+function useSpeech(line?: string) {
+  const [visible, setVisible] = useState<string | null>(null);
+  useEffect(() => {
+    if (!line) return;
+    setVisible(line);
+    const t = setTimeout(() => setVisible(null), SPEECH_MS);
+    return () => clearTimeout(t);
+  }, [line]);
+  return visible;
+}
 
 interface PlayerSeatProps {
   player: SeatPlayer;
@@ -57,8 +127,8 @@ export const PlayerSeat = ({
   turnSecondsLeft = null,
 }: PlayerSeatProps) => {
   const cards = player.holeCards.length > 0 ? player.holeCards : [];
-  const urgent =
-    turnSecondsLeft != null && turnSecondsLeft <= 15;
+  const urgent = turnSecondsLeft != null && turnSecondsLeft <= 15;
+  const speech = useSpeech(player.bot?.lastLine);
 
   return (
     <div
@@ -68,6 +138,15 @@ export const PlayerSeat = ({
       )}
       style={style}
     >
+      {speech ? (
+        <div
+          role='status'
+          className='pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-max max-w-[13rem] -translate-x-1/2 rounded-2xl bg-white px-3 py-1.5 text-center text-[11px] font-medium leading-snug text-neutral-800 shadow-lg ring-1 ring-neutral-200 animate-in fade-in-0 zoom-in-95 lg:text-xs'
+        >
+          {speech}
+          <span className='absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1 rotate-45 bg-white ring-0' />
+        </div>
+      ) : null}
       {cards.length > 0 ? (
         <div className='mb-0.5 flex items-end gap-1 lg:gap-1.5'>
           {cards.slice(0, 2).map((c, i) => (
@@ -134,7 +213,7 @@ export const PlayerSeat = ({
               <span className='max-w-[7.5rem] truncate text-[13px] font-semibold text-neutral-900 lg:max-w-[9rem] lg:text-sm'>
                 {isMe ? `${player.nickname} (you)` : player.nickname}
               </span>
-              <BadgeCheck className='h-3.5 w-3.5 shrink-0 fill-[#1D9BF0] text-white' />
+              {player.bot ? <BotBadge bot={player.bot} /> : null}
             </div>
             <div className='text-[11px] text-neutral-500 lg:text-xs'>
               <ChipAmount
@@ -156,9 +235,7 @@ export const PlayerSeat = ({
           )}
         >
           <span>
-            {turnSecondsLeft != null
-              ? formatClock(turnSecondsLeft)
-              : '•••'}
+            {turnSecondsLeft != null ? formatClock(turnSecondsLeft) : '•••'}
           </span>
           <span className='font-normal opacity-80'>to act</span>
         </div>

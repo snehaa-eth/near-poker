@@ -2,21 +2,24 @@
 
 import { useCallback, useMemo, useState } from 'react';
 
-import { api, type SessionUser } from '~/lib/api';
+import { type SessionUser, api } from '~/lib/api';
 import { defaultAvatarForAddress } from '~/lib/avatars';
-import { nicknameFromAddress } from '~/lib/midnight/address';
+import { nicknameFromAddress } from '~/lib/near/address';
 import {
-  CHIPS_PER_NIGHT,
-  chipsFromNight,
-  nightFromChips,
-  quoteWithdrawNight,
+  CHIPS_PER_NEAR,
+  chipsFromNear,
+  chipsToYocto,
+  nearFromChips,
+  nearToYocto,
 } from '~/lib/treasury';
-import { useMidnightWallet } from '~/providers/midnight-wallet-provider';
+
+import { useNearWallet } from '~/providers/near-wallet-provider';
 import { useSession } from '~/providers/session-provider';
 
 /**
- * Off-chain gaming wallet (MongoDB session chips).
- * Play poker with `chips`; deposit/withdraw sync via treasury APIs.
+ * Off-chain gaming wallet (session chips).
+ * Play poker with `chips`; deposit/withdraw go through the table-vault
+ * contract when NEXT_PUBLIC_VAULT_ID is set, then sync via treasury APIs.
  */
 export function useGamingWallet() {
   const { user, loading, refresh, upsertProfile } = useSession();
@@ -26,28 +29,31 @@ export function useGamingWallet() {
     connect,
     walletStatus,
     address,
-  } = useMidnightWallet();
+    vaultId,
+    callVault,
+  } = useNearWallet();
 
   const chips = user?.chips ?? 0;
-  const nightBalance = useMemo(() => nightFromChips(chips), [chips]);
+  const nearBalance = useMemo(() => nearFromChips(chips), [chips]);
 
-  const ensureSession = useCallback(async (): Promise<SessionUser> => {
+  const ensureSession = useCallback(async (): Promise<
+    SessionUser & { walletAddress: string }
+  > => {
     if (user?.walletAddress && address && user.walletAddress === address) {
-      return user;
+      return user as SessionUser & { walletAddress: string };
     }
 
-    if (!isConnected || !address) {
+    let wallet = address;
+    if (!isConnected || !wallet) {
       if (walletStatus === 'not-found') {
         throw new Error(
-          'No Midnight wallet found. Install 1AM or Lace, then refresh.'
+          'NEAR wallet selector failed to load. Refresh and retry.'
         );
       }
-      await connect();
+      wallet = await connect();
     }
-
-    const wallet = address;
     if (!wallet) {
-      throw new Error('Wallet address unavailable after connect.');
+      throw new Error('Wallet connection cancelled.');
     }
 
     const me = await upsertProfile({
@@ -56,7 +62,7 @@ export function useGamingWallet() {
       avatar: user?.avatar ?? defaultAvatarForAddress(wallet),
     });
     await refresh();
-    return me;
+    return { ...me, walletAddress: wallet };
   }, [
     user,
     isConnected,
@@ -71,108 +77,97 @@ export function useGamingWallet() {
     user,
     loading,
     chips,
-    nightBalance,
-    chipsPerNight: CHIPS_PER_NIGHT,
+    nearBalance,
+    chipsPerNear: CHIPS_PER_NEAR,
     isConnected,
     isConnecting,
     walletStatus,
     address,
+    vaultId,
+    onChain: Boolean(vaultId),
+    callVault,
     refresh,
     ensureSession,
     connect,
-    chipsFromNight,
-    nightFromChips,
+    chipsFromNear,
+    nearFromChips,
   };
 }
 
-export type DepositResult = Awaited<ReturnType<typeof api.treasuryDeposit>>;
+export type DepositResult = Awaited<ReturnType<typeof api.treasuryDeposit>> & {
+  txHash: string | null;
+};
 
-/** Credit MongoDB chips after (or alongside) on-chain deposit. */
+/** Deposit NEAR into table-vault (if configured), then credit session chips. */
 export function useDeposit() {
   const gaming = useGamingWallet();
-  const { ensureSession, refresh } = gaming;
+  const { ensureSession, refresh, callVault, onChain } = gaming;
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const preview = useCallback((nightAmount: number) => {
-    if (!Number.isFinite(nightAmount) || nightAmount <= 0) {
-      return { chipsAdded: 0, nightAmount: 0 };
+  const preview = useCallback((nearAmount: number) => {
+    if (!Number.isFinite(nearAmount) || nearAmount <= 0) {
+      return { chipsAdded: 0, nearAmount: 0 };
     }
-    return {
-      nightAmount,
-      chipsAdded: chipsFromNight(nightAmount),
-    };
+    return { nearAmount, chipsAdded: chipsFromNear(nearAmount) };
   }, []);
 
   const deposit = useCallback(
-    async (nightAmount: number): Promise<DepositResult> => {
-      if (!Number.isFinite(nightAmount) || nightAmount <= 0) {
-        throw new Error('Enter a positive NIGHT amount');
+    async (nearAmount: number): Promise<DepositResult> => {
+      if (!Number.isFinite(nearAmount) || nearAmount <= 0) {
+        throw new Error('Enter a positive NEAR amount');
       }
       setPending(true);
       setError(null);
       try {
         await ensureSession();
-        // TODO: call Compact deposit() with connected wallet, then credit DB
-        const result = await api.treasuryDeposit(nightAmount);
+        const yocto = nearToYocto(String(nearAmount));
+        let txHash: string | null = null;
+        if (onChain) {
+          ({ txHash } = await callVault({
+            methodName: 'deposit',
+            args: {},
+            depositYocto: yocto,
+          }));
+        }
+        const result = await api.treasuryDeposit({ nearAmount, yocto, txHash });
         await refresh();
-        return result;
+        return { ...result, txHash };
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : 'Deposit failed';
+        const message = err instanceof Error ? err.message : 'Deposit failed';
         setError(message);
         throw err;
       } finally {
         setPending(false);
       }
     },
-    [ensureSession, refresh]
+    [ensureSession, refresh, callVault, onChain]
   );
 
-  return {
-    user: gaming.user,
-    loading: gaming.loading,
-    chips: gaming.chips,
-    nightBalance: gaming.nightBalance,
-    chipsPerNight: gaming.chipsPerNight,
-    isConnected: gaming.isConnected,
-    isConnecting: gaming.isConnecting,
-    walletStatus: gaming.walletStatus,
-    address: gaming.address,
-    refresh: gaming.refresh,
-    ensureSession: gaming.ensureSession,
-    connect: gaming.connect,
-    chipsFromNight: gaming.chipsFromNight,
-    nightFromChips: gaming.nightFromChips,
-    pending,
-    error,
-    preview,
-    deposit,
-  };
+  return { ...gaming, pending, error, preview, deposit };
 }
 
-export type WithdrawResult = Awaited<ReturnType<typeof api.treasuryWithdraw>>;
+export type WithdrawResult = Awaited<
+  ReturnType<typeof api.treasuryWithdraw>
+> & {
+  txHash: string | null;
+};
 
-/** Debit MongoDB chips and settle NIGHT on-chain (operator withdraw). */
+/** Withdraw from table-vault (if configured), then debit session chips. */
 export function useWithdraw() {
   const gaming = useGamingWallet();
-  const { ensureSession, refresh, chips } = gaming;
+  const { ensureSession, refresh, chips, callVault, onChain } = gaming;
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const preview = useCallback(
     (chipAmount: number) => {
-      if (!Number.isFinite(chipAmount) || chipAmount <= 0) {
-        return null;
-      }
+      if (!Number.isFinite(chipAmount) || chipAmount <= 0) return null;
       const chipsOut = Math.floor(chipAmount);
       if (chipsOut <= 0) return null;
-      const grossNight =
-        Math.round((chipsOut / CHIPS_PER_NIGHT) * 1_000_000) / 1_000_000;
-      const quote = quoteWithdrawNight(grossNight);
       return {
         chipsOut,
-        ...quote,
+        nearOut: nearFromChips(chipsOut),
         canAfford: chipsOut <= chips,
       };
     },
@@ -186,47 +181,37 @@ export function useWithdraw() {
         throw new Error('Enter a positive chip amount');
       }
       if (chipsOut > chips) {
-        throw new Error(
-          `Insufficient chips. Need ${chipsOut}, have ${chips}.`
-        );
+        throw new Error(`Insufficient chips. Need ${chipsOut}, have ${chips}.`);
       }
       setPending(true);
       setError(null);
       try {
         await ensureSession();
-        const result = await api.treasuryWithdraw({ chipsAmount: chipsOut });
+        const yocto = chipsToYocto(chipsOut);
+        let txHash: string | null = null;
+        if (onChain) {
+          ({ txHash } = await callVault({
+            methodName: 'withdraw',
+            args: { amount: yocto },
+          }));
+        }
+        const result = await api.treasuryWithdraw({
+          chipsAmount: chipsOut,
+          yocto,
+          txHash,
+        });
         await refresh();
-        return result;
+        return { ...result, txHash };
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : 'Withdraw failed';
+        const message = err instanceof Error ? err.message : 'Withdraw failed';
         setError(message);
         throw err;
       } finally {
         setPending(false);
       }
     },
-    [ensureSession, refresh, chips]
+    [ensureSession, refresh, chips, callVault, onChain]
   );
 
-  return {
-    user: gaming.user,
-    loading: gaming.loading,
-    chips: gaming.chips,
-    nightBalance: gaming.nightBalance,
-    chipsPerNight: gaming.chipsPerNight,
-    isConnected: gaming.isConnected,
-    isConnecting: gaming.isConnecting,
-    walletStatus: gaming.walletStatus,
-    address: gaming.address,
-    refresh: gaming.refresh,
-    ensureSession: gaming.ensureSession,
-    connect: gaming.connect,
-    chipsFromNight: gaming.chipsFromNight,
-    nightFromChips: gaming.nightFromChips,
-    pending,
-    error,
-    preview,
-    withdraw,
-  };
+  return { ...gaming, pending, error, preview, withdraw };
 }

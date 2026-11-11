@@ -12,7 +12,7 @@ import {
 
 import { Button } from '~/components/ui/button';
 import { type PlayerActivityEvent } from '~/lib/api';
-import { formatTokens } from '~/lib/format';
+import { formatNear, formatTokens } from '~/lib/format';
 import { usePlayerActivity } from '~/lib/hooks';
 import { cn } from '~/lib/utils';
 
@@ -52,9 +52,10 @@ function formatWhen(iso: string | null) {
 }
 
 function amountLabel(event: PlayerActivityEvent) {
-  if (event.amountNight != null) {
+  const nearAmount = event.amountNear ?? event.amountNight;
+  if (nearAmount != null) {
     const sign = event.category === 'withdraw' ? '−' : '+';
-    return `${sign}${formatTokens(Math.abs(event.amountNight))} NIGHT`;
+    return `${sign}${formatNear(Math.abs(nearAmount))} NEAR`;
   }
   if (event.amountChips != null) {
     const n = event.amountChips;
@@ -146,7 +147,7 @@ export function ProfileActivity({ enabled }: { enabled: boolean }) {
           </div>
         ) : events.length === 0 ? (
           <p className='px-4 py-8 text-center text-sm text-neutral-400'>
-            No activity yet. Deposit NIGHT or join a table to get started.
+            No activity yet. Deposit NEAR or join a table to get started.
           </p>
         ) : (
           <ul className='divide-y divide-neutral-100'>

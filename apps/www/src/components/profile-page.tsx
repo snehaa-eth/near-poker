@@ -8,7 +8,7 @@ import { Camera, Pencil, RefreshCw, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { AvatarPickerModal } from '~/components/avatar-picker-modal';
-import { ChipAmount, NightAmount } from '~/components/currency-amount';
+import { ChipAmount, NearAmount } from '~/components/currency-amount';
 import { ProfileActivity } from '~/components/profile-activity';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
@@ -16,12 +16,11 @@ import {
   defaultAvatarForAddress,
   type AvatarPath,
 } from '~/lib/avatars';
-import { formatTokens } from '~/lib/format';
-import { shortAddress } from '~/lib/midnight/address';
-import { formatNightFromStars } from '~/lib/midnight/balances';
-import { CHIPS_PER_NIGHT } from '~/lib/treasury';
+import { formatNear, formatTokens } from '~/lib/format';
+import { shortAddress } from '~/lib/near/address';
+import { CHIPS_PER_NEAR, nearFromChips } from '~/lib/treasury';
 import { errorHandler } from '~/lib/utils';
-import { useMidnightWallet } from '~/providers/midnight-wallet-provider';
+import { useNearWallet } from '~/providers/near-wallet-provider';
 import { useSession } from '~/providers/session-provider';
 
 export const ProfilePage = () => {
@@ -37,7 +36,8 @@ export const ProfilePage = () => {
     balancesLoading,
     connect,
     refreshBalances,
-  } = useMidnightWallet();
+    vaultId,
+  } = useNearWallet();
   const { user, loading: sessionLoading, upsertProfile } = useSession();
 
   const [username, setUsername] = useState('');
@@ -55,13 +55,11 @@ export const ProfilePage = () => {
   const onConnect = async () => {
     try {
       if (walletStatus === 'not-found') {
-        toast.error(
-          'No Midnight wallet found. Install 1AM or Lace, then refresh.'
-        );
+        toast.error('NEAR wallet selector failed to load. Refresh and retry.');
         return;
       }
-      await connect();
-      toast.success('Midnight wallet connected');
+      const accountId = await connect();
+      if (accountId) toast.success(`Connected ${accountId}`);
     } catch (error) {
       toast.error(errorHandler(error));
     }
@@ -124,11 +122,12 @@ export const ProfilePage = () => {
           Profile
         </p>
         <h1 className='font-poker text-3xl tracking-wide text-neutral-950 sm:text-5xl'>
-          Connect a Midnight wallet to play
+          Connect a NEAR wallet to play
         </h1>
         <p className='text-sm text-neutral-600 sm:text-base'>
-          Poker runs off-chain for speed. Your Midnight wallet is your table
-          identity — username, avatar, and chips map to your address.
+          Hands run off-chain for speed; the deck is committed and settled on
+          NEAR. Your NEAR account is your table identity — username, avatar,
+          and chips map to your account id.
         </p>
         <Button
           className='rounded-full bg-neutral-950 px-5 text-white'
@@ -142,13 +141,8 @@ export const ProfilePage = () => {
   }
 
   const displayAvatar = avatar ?? defaultAvatarForAddress(address);
-  const unshielded = balances
-    ? formatNightFromStars(balances.unshieldedStars)
-    : '—';
-  const shielded = balances
-    ? formatNightFromStars(balances.shieldedStars)
-    : '—';
-  const dust = balances ? balances.dustBalance : null;
+  const walletNear = balances ? balances.near : '—';
+  const vaultNear = balances?.vault ?? '—';
 
   return (
     <div className='mx-auto w-full max-w-6xl px-4 pb-20 pt-20 sm:px-6 sm:pt-24 lg:px-8'>
@@ -239,7 +233,7 @@ export const ProfilePage = () => {
               <span className='truncate'>{shortAddress(address)}</span>
             </p>
             <p className='mt-1 truncate text-[11px] text-neutral-400 sm:text-xs'>
-              {walletName ?? 'Midnight wallet'} · {networkId}
+              {walletName ?? 'NEAR wallet'} · {networkId}
             </p>
           </div>
 
@@ -284,7 +278,7 @@ export const ProfilePage = () => {
           <div className='min-w-0'>
             <h2 className='text-lg font-semibold text-neutral-950'>Balances</h2>
             <p className='mt-1 text-sm text-neutral-500'>
-              1 NIGHT → {CHIPS_PER_NIGHT}× poker chips to play with.
+              1 NEAR → {CHIPS_PER_NEAR} poker chips (1 chip = 0.001 NEAR).
             </p>
           </div>
           <Button
@@ -305,39 +299,41 @@ export const ProfilePage = () => {
           <BalanceCard label='Poker chips'>
             <ChipAmount value={user?.chips ?? 0} size='lg' />
           </BalanceCard>
-          <BalanceCard label='Unshielded NIGHT'>
-            <NightAmount
+          <BalanceCard label='Chips in NEAR'>
+            <NearAmount
+              value={formatCompactNear(String(nearFromChips(user?.chips ?? 0)))}
+              size='lg'
+              raw
+            />
+          </BalanceCard>
+          <BalanceCard label='Wallet NEAR'>
+            <NearAmount
               value={
                 balancesLoading && !balances
                   ? '…'
-                  : formatCompactNight(unshielded)
+                  : formatCompactNear(walletNear)
               }
               size='lg'
               raw
             />
           </BalanceCard>
-          <BalanceCard label='Shielded NIGHT'>
-            <NightAmount
-              value={
-                balancesLoading && !balances
-                  ? '…'
-                  : formatCompactNight(shielded)
-              }
-              size='lg'
-              raw
-            />
-          </BalanceCard>
-          <BalanceCard label='DUST'>
-            <p className='mt-2 text-xl font-semibold tracking-tight tabular-nums text-neutral-950 sm:text-2xl'>
-              {balancesLoading && !balances
-                ? '…'
-                : dust != null
-                  ? formatTokens(dust)
-                  : '—'}
-            </p>
-            {dust != null && balances ? (
-              <p className='mt-1 text-[11px] tabular-nums text-neutral-400 sm:text-xs'>
-                Cap {formatTokens(balances.dustCap)}
+          <BalanceCard label='Table vault'>
+            {vaultId ? (
+              <NearAmount
+                value={
+                  balancesLoading && !balances
+                    ? '…'
+                    : formatCompactNear(vaultNear)
+                }
+                size='lg'
+                raw
+              />
+            ) : (
+              <p className='mt-2 text-sm text-neutral-400'>Off-chain mode</p>
+            )}
+            {vaultId ? (
+              <p className='mt-1 truncate text-[11px] text-neutral-400 sm:text-xs'>
+                {vaultId}
               </p>
             ) : null}
           </BalanceCard>
@@ -389,10 +385,11 @@ function BalanceCard({
   );
 }
 
-/** Compact K/L/M for NIGHT strings that may include decimals. */
-function formatCompactNight(raw: string) {
+/** Compact K/L/M for NEAR strings that may include decimals. */
+function formatCompactNear(raw: string) {
   if (raw === '—') return raw;
   const n = Number(raw);
   if (!Number.isFinite(n)) return raw;
+  if (Math.abs(n) < 1000) return formatNear(n);
   return formatTokens(n);
 }

@@ -24,6 +24,10 @@ function patchWasmModuleImport(isServer, config) {
 
 /** @type {import("next").NextConfig} */
 const config = {
+  // Lets a production build run alongside `next dev` (NEXT_DIST_DIR=.next-build).
+  distDir: process.env.NEXT_DIST_DIR || '.next',
+  // Lint runs separately (`pnpm lint`); don't block production builds on style rules.
+  eslint: { ignoreDuringBuilds: true },
   webpack: (config, { isServer }) => {
     config.externals.push('pino-pretty', 'lokijs', 'encoding');
     config.resolve.fallback = { fs: false, path: false, util: false };

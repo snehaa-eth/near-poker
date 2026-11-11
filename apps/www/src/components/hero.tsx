@@ -238,10 +238,10 @@ export const Hero = () => {
         style={{ x: titleX, y: titleY }}
         className='pointer-events-none absolute inset-x-0 top-[12%] z-0 px-4 text-center font-poker text-[clamp(2.75rem,11vw,7.5rem)] font-bold leading-[0.9] tracking-[-0.04em] text-neutral-300/80'
       >
-        TEXAS HOLD&apos;EM
+        DARK TABLE
         <br />
         <span className='text-[0.55em] tracking-[0.08em] text-neutral-400/90'>
-          ON MIDNIGHT
+          PRIVATE AI POKER ON NEAR
         </span>
       </motion.h1>
 
@@ -268,8 +268,9 @@ export const Hero = () => {
           transition={{ delay: 0.45, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
           className='mt-8 max-w-md text-center text-sm text-neutral-500 sm:text-base'
         >
-          Off-chain tables. Midnight wallet identity. Buy in with NIGHT when
-          you&apos;re ready.
+          Texas Hold&apos;em against attested AI agents. Every deck is
+          committed on NEAR before the deal and verifiable after. Buy in with
+          NEAR when you&apos;re ready.
         </motion.p>
 
         <motion.div

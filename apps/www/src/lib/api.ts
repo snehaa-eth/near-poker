@@ -28,6 +28,57 @@ export type LobbyGame = {
   updatedAt?: string;
 };
 
+/** INTERFACES §4 — provably fair deck commitment / reveal. */
+export type FairnessView = {
+  handId: string;
+  seedHash: string;
+  /** explorer tx when committed on-chain */
+  committedTx?: string;
+  revealed?: {
+    serverSeed: string;
+    entropy: string[];
+    deckSeed: string;
+    revealTx?: string;
+  };
+};
+
+/** INTERFACES §4 — AI agent seated at the table. */
+export type BotInfo = {
+  persona: string;
+  model?: string;
+  attested?: boolean;
+  signingAddress?: string;
+  lastLine?: string;
+};
+
+/** GET /hands/:handId (INTERFACES §4). */
+export type HandRecord = {
+  handId: string;
+  gameId: string;
+  seedHash: string;
+  serverSeed?: string;
+  entropy?: string[];
+  seats: Array<{
+    seat: number;
+    playerId: string;
+    nickname: string;
+    holeCards: number[];
+  }>;
+  community: number[];
+  txs?: Record<string, string | undefined> | string[];
+  /** Card id space used in seats/community. Defaults to engine ids. */
+  cardIds?: 'engine' | 'ui';
+  /** @deprecated alias of cardIds */
+  cardIdSpace?: 'engine' | 'ui';
+  deckSeed?: string;
+  revealed?: boolean;
+  complete?: boolean;
+  ledger?: string;
+  deltas?: Record<string, number> | Array<[string, string | number]>;
+  /** Server-side verifyHand problems (informational; we recompute anyway). */
+  errors?: string[];
+};
+
 export type PublicGameView = {
   gameId: string;
   name: string;
@@ -37,6 +88,8 @@ export type PublicGameView = {
   status: string;
   round: string;
   roundLabel: string;
+  /** Engine street (preflop/flop/…) when the server sends it. */
+  street?: string;
   players: Array<{
     id: string;
     nickname: string;
@@ -47,6 +100,7 @@ export type PublicGameView = {
     holeCards: number[];
     chosenCommunity: number[];
     weight: number;
+    bot?: BotInfo;
   }>;
   communityCards: number[];
   pot: number;
@@ -66,6 +120,16 @@ export type PublicGameView = {
   gameEnded: boolean;
   myPlayerId: string | null;
   isMyTurn: boolean;
+  fairness?: FairnessView;
+};
+
+export type NearProofBody = {
+  accountId: string;
+  publicKey: string;
+  signature: string;
+  message: string;
+  recipient: string;
+  nonce: string;
 };
 
 export type LeaderboardEntry = {
@@ -86,7 +150,9 @@ export type PlayerActivityEvent = {
   type: string;
   gameId: string | null;
   amountChips: number | null;
-  amountNight: number | null;
+  amountNear?: number | null;
+  /** legacy field name from the Midnight build */
+  amountNight?: number | null;
   balanceAfter: number | null;
   summary: string;
   payload: Record<string, unknown>;
@@ -133,6 +199,8 @@ export const api = {
     walletAddress: string;
     nickname?: string;
     avatar?: string | null;
+    /** NEP-413 login proof; server verification pending. */
+    nearProof?: NearProofBody;
   }) =>
     request<SessionUser>('/auth/profile', {
       method: 'POST',
@@ -186,29 +254,41 @@ export const api = {
     const q = params.toString();
     return request<PlayerActivityPage>(`/auth/activity${q ? `?${q}` : ''}`);
   },
-  treasuryDeposit: (nightAmount: number) =>
+  getHand: (handId: string) =>
+    request<HandRecord>(`/hands/${encodeURIComponent(handId)}`),
+  /**
+   * Credit off-chain chips. `nearAmount` is decimal NEAR; `txHash` is the
+   * table-vault `deposit()` tx when on-chain (server verifies against chain).
+   * `nightAmount` is sent as a legacy alias until the server is ported.
+   */
+  treasuryDeposit: (input: {
+    nearAmount: number;
+    yocto?: string;
+    txHash?: string | null;
+  }) =>
     request<{
       sessionId: string;
       nickname: string;
       chips: number;
-      nightAmount: number;
       chipsAdded: number;
-      chipsPerNight: number;
-      onChain: string;
+      nearAmount?: number;
+      onChain?: string;
     }>('/treasury/deposit', {
       method: 'POST',
-      body: JSON.stringify({ nightAmount }),
+      body: JSON.stringify({ ...input, nightAmount: input.nearAmount }),
     }),
-  treasuryWithdraw: (input: { chipsAmount?: number; nightAmount?: number }) =>
+  treasuryWithdraw: (input: {
+    chipsAmount: number;
+    yocto?: string;
+    txHash?: string | null;
+  }) =>
     request<{
       sessionId: string;
       nickname: string;
       chips: number;
       chipsDebited: number;
-      grossNight: number;
-      feeNight: number;
-      netNight: number;
-      onChain: string;
+      netNear?: number;
+      onChain?: string;
     }>('/treasury/withdraw', {
       method: 'POST',
       body: JSON.stringify(input),

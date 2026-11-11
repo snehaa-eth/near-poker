@@ -9,13 +9,10 @@ import { toast } from 'sonner';
 
 import { Button } from '~/components/ui/button';
 import { defaultAvatarForAddress } from '~/lib/avatars';
-import {
-  nicknameFromAddress,
-  shortAddress,
-} from '~/lib/midnight/address';
+import { nicknameFromAddress, shortAddress } from '~/lib/near/address';
 import { cn, errorHandler } from '~/lib/utils';
 import { playSound } from '~/lib/sounds';
-import { useMidnightWallet } from '~/providers/midnight-wallet-provider';
+import { useNearWallet } from '~/providers/near-wallet-provider';
 import { useSession } from '~/providers/session-provider';
 
 export const ConnectButton = () => {
@@ -27,7 +24,8 @@ export const ConnectButton = () => {
     walletStatus,
     connect,
     disconnect,
-  } = useMidnightWallet();
+    signLoginMessage,
+  } = useNearWallet();
   const { user: sessionUser, upsertProfile } = useSession();
   const [pending, setPending] = useState(false);
   const syncedWallet = useRef<string | null>(null);
@@ -47,8 +45,19 @@ export const ConnectButton = () => {
 
     void (async () => {
       try {
+        // New wallet for this session → try a NEP-413 signed login proof.
+        // Unsupported wallets / rejections fall back to the plain upsert.
+        let nearProof;
+        if (sessionUser?.walletAddress !== address) {
+          try {
+            nearProof = (await signLoginMessage()) ?? undefined;
+          } catch (error) {
+            console.warn('NEP-413 login signature skipped', error);
+          }
+        }
         await upsertProfile({
           walletAddress: address,
+          ...(nearProof ? { nearProof } : {}),
           ...(sessionUser?.nickname
             ? {}
             : { nickname: nicknameFromAddress(address) }),
@@ -68,20 +77,20 @@ export const ConnectButton = () => {
     sessionUser?.nickname,
     sessionUser?.avatar,
     upsertProfile,
+    signLoginMessage,
   ]);
 
   const onConnect = async () => {
     setPending(true);
     try {
       if (walletStatus === 'not-found') {
-        toast.error(
-          'No Midnight wallet found. Install 1AM or Lace, then refresh.'
-        );
+        toast.error('NEAR wallet selector failed to load. Refresh and retry.');
         return;
       }
-      await connect();
+      const accountId = await connect();
+      if (!accountId) return;
       playSound('gems');
-      toast.success('Midnight wallet connected');
+      toast.success(`Connected ${accountId}`);
     } catch (error) {
       playSound('paajiLose');
       toast.error(errorHandler(error));

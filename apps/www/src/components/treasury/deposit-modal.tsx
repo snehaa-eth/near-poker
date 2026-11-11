@@ -5,7 +5,7 @@ import React, { useMemo, useState } from 'react';
 import { ArrowDownToLine } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { ChipAmount, NightAmount } from '~/components/currency-amount';
+import { ChipAmount, NearAmount } from '~/components/currency-amount';
 import { Button } from '~/components/ui/button';
 import {
   Dialog,
@@ -18,7 +18,8 @@ import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { useDeposit } from '~/lib/hooks';
 import { playSound } from '~/lib/sounds';
-import { CHIPS_PER_NIGHT } from '~/lib/treasury';
+import { explorerTxUrl } from '~/lib/near/rpc';
+import { CHIPS_PER_NEAR } from '~/lib/treasury';
 import { errorHandler } from '~/lib/utils';
 
 type Props = {
@@ -35,19 +36,26 @@ export function DepositModal({ open, onOpenChange }: Props) {
     pending,
     preview,
     deposit,
+    onChain,
   } = useDeposit();
-  const [nightAmount, setNightAmount] = useState('100');
+  const [nearAmount, setNearAmount] = useState('1');
 
-  const night = Number(nightAmount);
-  const previewData = useMemo(() => preview(night), [preview, night]);
+  const near = Number(nearAmount);
+  const previewData = useMemo(() => preview(near), [preview, near]);
 
   const onDeposit = async () => {
     try {
-      const result = await deposit(night);
+      const result = await deposit(near);
       playSound('gems');
-      toast.success(
-        `Deposited ${night} NIGHT → +${result.chipsAdded} chips`
-      );
+      toast.success(`Deposited ${near} NEAR → +${result.chipsAdded} chips`, {
+        description: result.txHash ? 'View on NearBlocks' : undefined,
+        action: result.txHash
+          ? {
+              label: 'Tx',
+              onClick: () => window.open(explorerTxUrl(result.txHash!), '_blank'),
+            }
+          : undefined,
+      });
       onOpenChange(false);
     } catch (error) {
       playSound('paajiLose');
@@ -63,40 +71,43 @@ export function DepositModal({ open, onOpenChange }: Props) {
             <span className='flex h-9 w-9 items-center justify-center rounded-full bg-emerald-50 text-emerald-700'>
               <ArrowDownToLine className='h-4 w-4' />
             </span>
-            Deposit NIGHT
+            Deposit NEAR
           </DialogTitle>
           <DialogDescription className='text-neutral-600'>
-            Convert NIGHT into poker chips at{' '}
+            Convert NEAR into poker chips at{' '}
             <span className='font-medium text-neutral-900'>
-              1 NIGHT → {CHIPS_PER_NIGHT}× chips
+              1 NEAR → {CHIPS_PER_NEAR} chips
             </span>
-            . Play with chips; NIGHT stays in the treasury.
+            .{' '}
+            {onChain
+              ? 'Your NEAR is held by the table-vault contract until you withdraw.'
+              : 'Play with chips; NEAR stays in the treasury.'}
           </DialogDescription>
         </DialogHeader>
 
         <div className='mt-2 space-y-4'>
           <div className='space-y-2'>
-            <Label htmlFor='deposit-night'>Amount (NIGHT)</Label>
+            <Label htmlFor='deposit-near'>Amount (NEAR)</Label>
             <Input
-              id='deposit-night'
+              id='deposit-near'
               type='number'
               min={0}
               step='any'
               inputMode='decimal'
               className='rounded-full'
-              value={nightAmount}
-              onChange={(e) => setNightAmount(e.target.value)}
-              placeholder='100'
+              value={nearAmount}
+              onChange={(e) => setNearAmount(e.target.value)}
+              placeholder='1'
             />
           </div>
 
           <div className='rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600'>
             <div className='flex items-center justify-between'>
               <span>You deposit</span>
-              <NightAmount
+              <NearAmount
                 value={
                   previewData.chipsAdded > 0
-                    ? String(previewData.nightAmount)
+                    ? String(previewData.nearAmount)
                     : '—'
                 }
                 size='sm'

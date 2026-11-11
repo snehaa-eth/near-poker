@@ -24,3 +24,10 @@ function trim(n: number) {
   if (n >= 10) return n.toFixed(1).replace(/\.0$/, '');
   return n.toFixed(2).replace(/\.?0+$/, '');
 }
+
+/** NEAR amounts: up to 4 decimals below 1000, compact above. */
+export function formatNear(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  if (Math.abs(value) >= 1000) return formatTokens(value);
+  return value.toFixed(4).replace(/\.?0+$/, '') || '0';
+}

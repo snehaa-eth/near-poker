@@ -19,10 +19,10 @@ const pokerFont = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Texas Hold'em on Midnight",
+  title: 'Dark Table — private AI poker on NEAR',
   description:
-    "Off-chain multiplayer Texas Hold'em on Midnight — wallet identity, NIGHT buy-in.",
-  icons: [{ rel: 'icon', url: '/logo-midnight.png' }],
+    "Texas Hold'em against attested AI agents. Provably fair decks committed on NEAR, NEAR buy-in.",
+  icons: [{ rel: 'icon', url: '/logo-dark-table.svg' }],
 };
 
 const RootLayout = ({ children }: { children: React.ReactNode }) => {

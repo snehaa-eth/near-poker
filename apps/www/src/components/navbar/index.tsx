@@ -16,7 +16,7 @@ export const Navbar = () => {
           href='/'
         >
           <Image
-            src='/logo-midnight.png'
+            src='/logo-dark-table.svg'
             alt=''
             width={28}
             height={28}
@@ -24,9 +24,9 @@ export const Navbar = () => {
             priority
           />
           <span className='truncate font-poker text-base tracking-wide sm:text-lg'>
-            <span className='sm:hidden'>Midnight</span>
+            <span className='sm:hidden'>Dark Table</span>
             <span className='hidden sm:inline'>
-              Texas Hold&lsquo;em on Midnight
+              Dark Table — private AI poker on NEAR
             </span>
           </span>
         </Link>

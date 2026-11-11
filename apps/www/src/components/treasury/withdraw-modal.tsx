@@ -5,7 +5,7 @@ import React, { useMemo, useState } from 'react';
 import { ArrowUpFromLine } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { ChipAmount, NightAmount } from '~/components/currency-amount';
+import { ChipAmount, NearAmount } from '~/components/currency-amount';
 import { Button } from '~/components/ui/button';
 import {
   Dialog,
@@ -18,7 +18,8 @@ import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { useWithdraw } from '~/lib/hooks';
 import { playSound } from '~/lib/sounds';
-import { CHIPS_PER_NIGHT } from '~/lib/treasury';
+import { explorerTxUrl } from '~/lib/near/rpc';
+import { CHIPS_PER_NEAR } from '~/lib/treasury';
 import { errorHandler } from '~/lib/utils';
 
 type Props = {
@@ -34,6 +35,7 @@ export function WithdrawModal({ open, onOpenChange }: Props) {
     pending,
     preview,
     withdraw,
+    onChain,
   } = useWithdraw();
   const [chipAmount, setChipAmount] = useState('');
 
@@ -45,7 +47,16 @@ export function WithdrawModal({ open, onOpenChange }: Props) {
       const result = await withdraw(chipsOut);
       playSound('paajiCashOut');
       toast.success(
-        `Cashed out ${result.chipsDebited} chips → ${result.netNight} NIGHT`
+        `Cashed out ${result.chipsDebited} chips → ${result.netNear ?? quote?.nearOut ?? '?'} NEAR`,
+        {
+          action: result.txHash
+            ? {
+                label: 'Tx',
+                onClick: () =>
+                  window.open(explorerTxUrl(result.txHash!), '_blank'),
+              }
+            : undefined,
+        }
       );
       onOpenChange(false);
       setChipAmount('');
@@ -66,12 +77,11 @@ export function WithdrawModal({ open, onOpenChange }: Props) {
             Withdraw
           </DialogTitle>
           <DialogDescription className='text-neutral-600'>
-            Cash out poker chips. You get NIGHT at{' '}
+            Cash out poker chips. You get NEAR at{' '}
             <span className='font-medium text-neutral-900'>
-              {CHIPS_PER_NIGHT} chips = 1 NIGHT
+              {CHIPS_PER_NEAR} chips = 1 NEAR
             </span>
-            , minus a{' '}
-            <span className='font-medium text-neutral-900'>5% fee</span>.
+            {onChain ? ', paid out by the table-vault contract.' : '.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -112,26 +122,10 @@ export function WithdrawModal({ open, onOpenChange }: Props) {
                 raw={!quote}
               />
             </div>
-            <div className='mt-2 flex items-center justify-between'>
-              <span>Gross NIGHT</span>
-              <NightAmount
-                value={quote ? String(quote.grossNight) : '—'}
-                size='sm'
-                raw
-              />
-            </div>
-            <div className='mt-2 flex items-center justify-between'>
-              <span>Fee (5%)</span>
-              <NightAmount
-                value={quote ? String(quote.feeNight) : '—'}
-                size='sm'
-                raw
-              />
-            </div>
             <div className='mt-3 flex items-center justify-between border-t border-neutral-200 pt-3'>
               <span className='font-medium text-neutral-900'>You receive</span>
-              <NightAmount
-                value={quote ? String(quote.netNight) : '—'}
+              <NearAmount
+                value={quote ? String(quote.nearOut) : '—'}
                 size='md'
                 className='text-emerald-700'
                 raw

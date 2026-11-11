@@ -16,13 +16,13 @@ import {
 import { Input } from '~/components/ui/input';
 import { api } from '~/lib/api';
 import { errorHandler } from '~/lib/utils';
-import { useMidnightWallet } from '~/providers/midnight-wallet-provider';
+import { useNearWallet } from '~/providers/near-wallet-provider';
 import { useSession } from '~/providers/session-provider';
 
 /** Public join-by-ID or join code — lobby creation is admin-only at /admin. */
 export const JoinGame = () => {
   const { user } = useSession();
-  const { isConnected } = useMidnightWallet();
+  const { isConnected } = useNearWallet();
   const router = useRouter();
   const [code, setCode] = useState('');
   const [open, setOpen] = useState(false);
@@ -30,7 +30,7 @@ export const JoinGame = () => {
   const onJoin = async () => {
     const id = toast.loading('Joining…');
     try {
-      if (!isConnected) throw new Error('Connect your Midnight wallet first.');
+      if (!isConnected) throw new Error('Connect your NEAR wallet first.');
       if (!user) throw new Error('Wallet session not ready — try reconnecting.');
       const value = code.trim();
       if (!value) throw new Error('Enter a join code or game ID.');

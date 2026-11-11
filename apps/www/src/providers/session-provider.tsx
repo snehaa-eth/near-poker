@@ -9,7 +9,7 @@ import React, {
   useState,
 } from 'react';
 
-import { api, type SessionUser } from '~/lib/api';
+import { api, type NearProofBody, type SessionUser } from '~/lib/api';
 import { errorHandler } from '~/lib/utils';
 
 import { toast } from 'sonner';
@@ -18,6 +18,7 @@ type ProfileInput = {
   walletAddress: string;
   nickname?: string;
   avatar?: string | null;
+  nearProof?: NearProofBody;
 };
 
 type SessionContextValue = {
