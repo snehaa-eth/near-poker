@@ -6,10 +6,10 @@
     "dev": "turbo dev",
     "lint": "turbo lint",
     "format": "prettier . --write --cache",
-    "test": "turbo test",
+    "test": "pnpm --filter @nli/poker-engine build && pnpm --filter @nli/poker-engine test && pnpm --filter server test",
     "test:poker": "pnpm --filter @nli/poker-engine test",
-    "test:contracts": "pnpm --filter @nli/contracts test",
-    "db:generate": "pnpm --filter @nli/db generate"
+    "demo": "pnpm --filter @nli/poker-engine build && pnpm --filter server demo",
+    "test:contract": "cd contract && npm install && npm run build && npm test"
   },
   "devDependencies": {
     "config": "workspace:*",
