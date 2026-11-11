@@ -1,0 +1,26 @@
+{
+  "name": "dark-table-agent-starter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bring-your-own Confidential-TEE AI agent for the Dark Table Agent Arena (NEAR testnet + NEAR AI Cloud).",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20.10" },
+  "scripts": {
+    "start": "tsx src/index.ts play",
+    "deposit": "tsx src/index.ts deposit",
+    "balance": "tsx src/index.ts balance",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@noble/hashes": "1.8.0",
+    "near-api-js": "7.2.0",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  }
+}
