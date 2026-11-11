@@ -555,9 +555,45 @@ export async function actionStart(gameId: string, actorId?: string) {
   }
 }
 
+/**
+ * A player who finished the last hand with 0 chips leaves the table before the next
+ * hand. Otherwise they'd be dealt in and committed on-chain, and the vault refuses a
+ * hand that includes an account with no balance. The table restarts without them.
+ */
+async function retireBustedPlayers(state: StoredGame, actorId?: string) {
+  if (state.nlhe && state.nlhe.street !== 'complete') return state;
+  // After a hand: table stacks. Before the first hand: session chips.
+  const stacks = state.nlhe
+    ? Object.fromEntries(state.nlhe.players.map((p) => [p.id, p.stack]))
+    : await loadStacksForPlayers(state.players.map((p) => p.id));
+  const busted = new Set(
+    state.players.filter((p) => (stacks[p.id] ?? 0) <= 0).map((p) => p.id)
+  );
+  if (busted.size === 0) return state;
+  const next: StoredGame = {
+    ...state,
+    players: state.players.filter((p) => !busted.has(p.id)),
+    nlhe: null,
+  };
+  for (const id of busted) {
+    await recordGameActivity({
+      sessionId: id,
+      type: 'game:retired',
+      summary: `Busted and left table ${state.gameId.slice(0, 8)}`,
+      gameId: state.gameId,
+    });
+  }
+  return save(next, {
+    type: 'game:retired',
+    actorId,
+    payload: { retired: [...busted] },
+  });
+}
+
 async function startFairHand(gameId: string, actorId?: string) {
-  const before = await load(gameId);
-  if (!before) throw new Error('GameNotFound');
+  const loaded = await load(gameId);
+  if (!loaded) throw new Error('GameNotFound');
+  const before = await retireBustedPlayers(loaded, actorId);
   if (
     before.nlhe &&
     before.nlhe.street !== 'complete' &&
