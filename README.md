@@ -48,7 +48,7 @@ pnpm demo        # local server + 6 bots play 20 hands, every hand verified; exi
 |---|---|
 | `pnpm demo` | per hand: `fair ✅ hand #N … entropy 6/6`; at the end `🔐 20/20 hands verified provably fair` |
 | `HANDS=50 pnpm demo` | 50/50 verified; a different `first deckSeed` every run |
-| `NEARAI_API_KEY=… pnpm demo` | bot moves marked 🧠✔ (TEE model, signature verified) with trash talk lines; falls back to 📏 rules on timeout |
+| `NEARAI_API_KEY=… AI=1 pnpm demo` (paid API, capped at 40 calls ≈ $0.01) | bot moves marked 🧠✔ (TEE model, signature verified) with trash talk lines; falls back to 📏 rules on timeout |
 | `pnpm test:contract` (Rust 1.86 + cargo-near 0.20.3) | 26 Rust unit tests + 5 near-workspaces sandbox tests |
 | Web UI: `pnpm --filter server dev` and `pnpm --filter www dev`, open http://localhost:3000, then `cd apps/server && pnpm exec tsx scripts/bots-6.ts` | live table with 6 bots, "🔒 Deck committed" pill, "✅ Verify hand" link → `/verify/<handId>` recomputes the deck in your browser |
 | Open http://localhost:3000/verify/demo | the INTERFACES test vector verified offline in the browser |

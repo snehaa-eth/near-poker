@@ -5,7 +5,7 @@
  *
  *   pnpm demo                 # from the repo root (20 hands)
  *   HANDS=50 pnpm demo
- *   NEARAI_API_KEY=… pnpm demo   # bots think with NEAR AI Cloud (TEE) instead of rules
+ *   NEARAI_API_KEY=… AI=1 pnpm demo   # bots think with NEAR AI Cloud (TEE) instead of rules
  */
 import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -57,7 +57,7 @@ async function main() {
         HANDS: process.env.HANDS ?? '20',
         STEP_MS: process.env.STEP_MS ?? '20',
         START_DELAY_MS: '0',
-        ...(process.env.NEARAI_API_KEY ? {} : { FAST: '1' }),
+        ...(process.env.NEARAI_API_KEY && process.env.AI === '1' ? {} : { FAST: '1' }),
       },
     });
     const code: number = await new Promise((r) => bots.on('exit', (c) => r(c ?? 1)));

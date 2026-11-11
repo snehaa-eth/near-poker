@@ -21,10 +21,10 @@
  *
  * FAST headless mode:  HANDS=10 STEP_MS=30 START_DELAY_MS=0 npx tsx scripts/bots-6.ts
  *
- * LLM brains (NEAR AI Cloud, TEE inference): set NEARAI_API_KEY (and not FAST=1). Each decision
+ * LLM brains (NEAR AI Cloud, TEE inference): set NEARAI_API_KEY and AI=1 (and not FAST=1). Each decision
  * goes to the model with the bot's persona, its OWN hole cards and the public table state; the
  * response signature is checked against the nonce-bound attestation report (src/brain/nearai.ts).
- * Falls back to the rule bot on timeout / error / illegal output, or after MAX_LLM_CALLS (200).
+ * Falls back to the rule bot on timeout / error / illegal output, or after MAX_LLM_CALLS (default 40, ≈$0.01).
  *   NEARAI_MODEL (default Qwen/Qwen3.6-35B-A3B-FP8), LLM_TIMEOUT_MS (default 6000),
  *   NEARAI_BASE_URL (default https://cloud-api.near.ai/v1; point at a mock for offline tests)
  * Output marker per action: 🧠 = LLM move (✔ signature verified), 📏 = rules.
@@ -52,7 +52,9 @@ const HANDS = Number(process.env.HANDS ?? 5);
 const STEP_MS = Number(process.env.STEP_MS ?? 1200);
 const START_DELAY_MS = Number(process.env.START_DELAY_MS ?? 10000);
 const FAST = process.env.FAST === '1';
-const MAX_LLM_CALLS = Number(process.env.MAX_LLM_CALLS ?? 200);
+// Paid API: AI moves only when explicitly asked (AI=1), and capped per run.
+const MAX_LLM_CALLS = Number(process.env.MAX_LLM_CALLS ?? 40);
+const USE_AI = process.env.AI === '1';
 const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 6000);
 
 type Style = { name: string; emoji: string; loose: number; aggro: number; bluff: number };
@@ -238,7 +240,7 @@ async function main() {
   const apiKey = process.env.NEARAI_API_KEY;
   let brain: Brain | null = null;
   let attestation: AttestationSummary | null = null;
-  if (apiKey && !FAST) {
+  if (apiKey && USE_AI && !FAST) {
     brain = createBrain({ apiKey, model: process.env.NEARAI_MODEL || NEARAI_DEFAULT_MODEL, baseUrl: process.env.NEARAI_BASE_URL || undefined, timeoutMs: LLM_TIMEOUT_MS });
     attestation = await brain.attest();
     const a = attestation;
@@ -248,7 +250,7 @@ async function main() {
         : `🧠 NEAR AI Cloud brain: ${brain.model}  attestation NOT ok (${a.error ?? 'unknown'}) — moves still used, signatures will not verify`
     );
   } else {
-    console.log(`📏 rule bots (${FAST ? 'FAST=1' : 'no NEARAI_API_KEY'})`);
+    console.log(`📏 rule bots (${FAST ? 'FAST=1' : !USE_AI ? 'set AI=1 to use NEAR AI Cloud (paid)' : 'no NEARAI_API_KEY'})`);
   }
   const llm = { calls: 0, used: 0, verified: 0, fallbacks: 0, latency: 0 };
 
