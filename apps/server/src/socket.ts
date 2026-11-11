@@ -68,7 +68,10 @@ export function createSocketServer(httpServer: HttpServer, origin: string) {
       const sessionId = cookies[SESSION_COOKIE];
       const session = await getSession(sessionId);
       if (!session) {
-        next(new Error('NotAuthenticated'));
+        // Spectator: may watch rooms (sees no hole cards until showdown), cannot act.
+        socket.data.sessionId = undefined;
+        socket.data.nickname = 'spectator';
+        next();
         return;
       }
       socket.data.sessionId = session.sessionId;
@@ -87,6 +90,7 @@ export function createSocketServer(httpServer: HttpServer, origin: string) {
       fn: () => Promise<unknown>
     ) => {
       try {
+        if (!playerId) throw new Error('NotAuthenticated');
         await fn();
         await broadcastGame(io, gameId);
       } catch (error) {

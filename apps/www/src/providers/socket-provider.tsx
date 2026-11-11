@@ -33,15 +33,7 @@ export const SocketProvider = ({
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    if (!user) {
-      setSocket((prev) => {
-        prev?.disconnect();
-        return null;
-      });
-      setConnected(false);
-      return;
-    }
-
+    // Connect even when logged out so visitors can spectate tables (server rejects their actions).
     const s = io(env.NEXT_PUBLIC_WS_URL, {
       withCredentials: true,
       transports: ['websocket', 'polling'],
