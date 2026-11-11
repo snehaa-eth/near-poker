@@ -1,0 +1,230 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  displayName String?
+  email     String?  @unique
+
+  wallets   Wallet[]
+  agents    Agent[]
+  deposits  Deposit[]
+  withdrawals Withdrawal[]
+  leaderboard LeaderboardEntry?
+}
+
+model Wallet {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  address   String
+  chainId   Int
+  isPrimary Boolean  @default(false)
+
+  @@unique([address, chainId])
+  @@index([userId])
+}
+
+model Agent {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  name        String
+  model       String
+  systemPrompt String?
+  isActive    Boolean  @default(true)
+
+  gamePlayers GamePlayer[]
+  inferenceRequests InferenceRequest[]
+
+  @@index([userId])
+}
+
+model Game {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  status      GameStatus @default(WAITING)
+  smallBlind  Int
+  bigBlind    Int
+  maxPlayers  Int      @default(6)
+  chainId     Int?
+  escrowGameId String? @unique
+  tableSeed   Int?
+
+  players     GamePlayer[]
+  rounds      GameRound[]
+  actions     GameAction[]
+  results     GameResult[]
+  settlements Settlement[]
+  deposits    Deposit[]
+
+  @@index([status])
+}
+
+enum GameStatus {
+  WAITING
+  ACTIVE
+  SETTLING
+  COMPLETE
+  CANCELLED
+}
+
+model GamePlayer {
+  id        String   @id @default(cuid())
+  gameId    String
+  game      Game     @relation(fields: [gameId], references: [id])
+  agentId   String?
+  agent     Agent?   @relation(fields: [agentId], references: [id])
+  userId    String?
+  seat      Int
+  buyIn     Int
+  stack     Int
+  isSittingOut Boolean @default(false)
+
+  @@unique([gameId, seat])
+  @@index([agentId])
+}
+
+model GameRound {
+  id        String   @id @default(cuid())
+  gameId    String
+  game      Game     @relation(fields: [gameId], references: [id])
+  handIndex Int
+  street    String
+  potTotal  Int      @default(0)
+  community Json?
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+
+  @@index([gameId, handIndex])
+}
+
+model GameAction {
+  id        String   @id @default(cuid())
+  gameId    String
+  game      Game     @relation(fields: [gameId], references: [id])
+  handIndex Int
+  street    String
+  playerId  String
+  action    String
+  amount    Int?
+  createdAt DateTime @default(now())
+
+  @@index([gameId, handIndex])
+}
+
+model GameResult {
+  id        String   @id @default(cuid())
+  gameId    String
+  game      Game     @relation(fields: [gameId], references: [id])
+  handIndex Int
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([gameId])
+}
+
+model InferenceRequest {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  agentId   String
+  agent     Agent    @relation(fields: [agentId], references: [id])
+  gameId    String?
+  model     String
+  status    InferenceStatus @default(PENDING)
+  latencyMs Int?
+  error     String?
+
+  usage     InferenceUsage?
+
+  @@index([agentId])
+  @@index([gameId])
+}
+
+enum InferenceStatus {
+  PENDING
+  SUCCESS
+  TIMEOUT
+  ERROR
+  FALLBACK
+}
+
+model InferenceUsage {
+  id        String   @id @default(cuid())
+  requestId String   @unique
+  request   InferenceRequest @relation(fields: [requestId], references: [id])
+  promptTokens     Int @default(0)
+  completionTokens Int @default(0)
+  totalTokens      Int @default(0)
+  estimatedCostUsd Float?
+}
+
+model Deposit {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  gameId    String?
+  game      Game?    @relation(fields: [gameId], references: [id])
+  amount    String
+  txHash    String?  @unique
+  status    TxStatus @default(PENDING)
+  chainId   Int
+
+  @@index([userId])
+}
+
+model Withdrawal {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  amount    String
+  txHash    String?  @unique
+  status    TxStatus @default(PENDING)
+  chainId   Int
+
+  @@index([userId])
+}
+
+model Settlement {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  gameId    String
+  game      Game     @relation(fields: [gameId], references: [id])
+  payload   Json
+  txHash    String?  @unique
+  status    TxStatus @default(PENDING)
+  chainId   Int
+
+  @@index([gameId])
+}
+
+enum TxStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+}
+
+model LeaderboardEntry {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  wins      Int      @default(0)
+  losses    Int      @default(0)
+  profit    String   @default("0")
+  handsPlayed Int    @default(0)
+  updatedAt DateTime @updatedAt
+}

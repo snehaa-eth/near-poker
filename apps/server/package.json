@@ -1,0 +1,35 @@
+{
+  "name": "server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=.env src/index.ts",
+    "build": "tsc",
+    "start": "node --env-file=.env dist/index.js",
+    "smoke": "tsx ../../scripts/smoke-poker.ts"
+  },
+  "dependencies": {
+    "@nli/poker-engine": "workspace:*",
+    "cookie": "^0.7.2",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "express": "^4.21.1",
+    "game-engine": "workspace:*",
+    "mongodb-memory-server": "^11.2.0",
+    "mongoose": "^8.7.1",
+    "socket.io": "^4.8.0",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/cookie": "^0.6.0",
+    "@types/cookie-parser": "^1.4.7",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.7.4",
+    "@types/uuid": "^10.0.0",
+    "socket.io-client": "^4.8.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  }
+}

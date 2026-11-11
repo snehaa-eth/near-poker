@@ -1,0 +1,23 @@
+{
+  "name": "midnight-poker",
+  "private": true,
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "format": "prettier . --write --cache",
+    "test": "turbo test",
+    "test:poker": "pnpm --filter @nli/poker-engine test",
+    "test:contracts": "pnpm --filter @nli/contracts test",
+    "db:generate": "pnpm --filter @nli/db generate"
+  },
+  "devDependencies": {
+    "config": "workspace:*",
+    "prettier": "^3.2.5",
+    "turbo": "^2"
+  },
+  "packageManager": "pnpm@8.9.0",
+  "engines": {
+    "node": ">=18"
+  }
+}

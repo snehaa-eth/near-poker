@@ -1,0 +1,124 @@
+pragma language_version >= 0.23;
+import CompactStandardLibrary;
+
+/**
+ * NLITreasury (Midnight) — on-chain NIGHT custody only.
+ *
+ * Maps to the Orbio NLITreasury CREDIT design, but settlement asset is
+ * unshielded NIGHT (Stars). Poker gameplay, chips, bets, pots stay off-chain.
+ *
+ * deposit  → player sends NIGHT in; backend credits MongoDB chips
+ * withdraw → operator sends net NIGHT out (5% fee retained in treasury)
+ */
+
+export ledger owner: Bytes<32>;
+export ledger operator: Bytes<32>;
+
+export ledger vaultBalance: Uint<128>;
+export ledger totalDeposited: Uint<128>;
+export ledger totalWithdrawn: Uint<128>;
+export ledger totalFeesRetained: Uint<128>;
+export sealed ledger withdrawFeeBps: Uint<16>;
+
+/** Cumulative Stars each player has deposited (public, for indexer / UX). */
+export ledger deposited: Map<UserAddress, Uint<128>>;
+
+witness ownerKey(): Bytes<32>;
+witness operatorKey(): Bytes<32>;
+
+constructor(ownerSecret: Bytes<32>, operatorPk: Bytes<32>) {
+  owner = disclose(deriveOwnerKey(ownerSecret));
+  operator = disclose(operatorPk);
+  withdrawFeeBps = 500;
+  vaultBalance = 0;
+  totalDeposited = 0;
+  totalWithdrawn = 0;
+  totalFeesRetained = 0;
+}
+
+/**
+ * Deposit any positive unshielded NIGHT amount into the treasury.
+ * Backend listens via indexer / ledger poll and credits off-chain chips.
+ */
+export circuit deposit(player: UserAddress, amount: Uint<128>): [] {
+  assert(disclose(amount) > 0, "Amount must be greater than zero");
+  receiveUnshielded(nativeToken(), disclose(amount));
+
+  const prev = deposited.member(disclose(player))
+    ? deposited.lookup(disclose(player))
+    : 0;
+  deposited.insert(
+    disclose(player),
+    disclose((prev + amount) as Uint<128>)
+  );
+
+  vaultBalance = disclose((vaultBalance + amount) as Uint<128>);
+  totalDeposited = disclose((totalDeposited + amount) as Uint<128>);
+}
+
+/**
+ * Operator withdrawal after backend validates off-chain balance.
+ * `amount` = gross Stars to debit off-chain.
+ * `fee` must be floor(amount / 20) (= 5%). User receives amount - fee.
+ * Fee is retained in the treasury (default feeRecipient = this contract).
+ */
+export circuit withdraw(
+  user: UserAddress,
+  amount: Uint<128>,
+  fee: Uint<128>
+): [] {
+  assert(deriveOperatorKey(operatorKey()) == operator, "Only operator");
+  assert(disclose(amount) > 0, "Amount must be greater than zero");
+  assert(disclose(withdrawFeeBps) == 500, "Withdrawal fee must be 5%");
+  assert(disclose(fee) * 20 <= disclose(amount), "Fee too high");
+  assert(
+    disclose(amount) - disclose(fee) * 20 < 20,
+    "Fee too low"
+  );
+
+  const net = disclose((amount - fee) as Uint<128>);
+  assert(disclose(net) > 0, "Net amount is zero");
+  assert(disclose(net) <= vaultBalance, "Insufficient treasury balance");
+  assert(
+    unshieldedBalanceGte(nativeToken(), net),
+    "Contract unshielded balance too low"
+  );
+
+  sendUnshielded(
+    nativeToken(),
+    net,
+    right<ContractAddress, UserAddress>(disclose(user))
+  );
+
+  vaultBalance = disclose((vaultBalance - net) as Uint<128>);
+  totalWithdrawn = disclose((totalWithdrawn + net) as Uint<128>);
+  if (disclose(fee) > 0) {
+    totalFeesRetained = disclose((totalFeesRetained + fee) as Uint<128>);
+  }
+}
+
+/** Owner rotates the backend operator public key. */
+export circuit setOperator(newOperator: Bytes<32>): [] {
+  assert(deriveOwnerKey(ownerKey()) == owner, "Only owner");
+  operator = disclose(newOperator);
+}
+
+/** Owner transfers admin control. */
+export circuit transferOwnership(newOwnerSecret: Bytes<32>): [] {
+  assert(deriveOwnerKey(ownerKey()) == owner, "Only owner");
+  owner = disclose(deriveOwnerKey(newOwnerSecret));
+}
+
+pure circuit deriveOwnerKey(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([
+    pad(32, "nli-treasury:owner:v1"),
+    sk,
+  ]);
+}
+
+pure circuit deriveOperatorKey(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([
+    pad(32, "nli-treasury:operator:v1"),
+    sk,
+  ]);
+}
