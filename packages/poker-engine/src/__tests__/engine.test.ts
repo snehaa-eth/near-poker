@@ -35,6 +35,28 @@ describe('NLHE engine', () => {
     expect(t.toAct).toBe(t.button);
   });
 
+  it('lets the big blind raise on its preflop option', () => {
+    let t = createTable(
+      [
+        { id: 'a', stack: 1000 },
+        { id: 'b', stack: 1000 },
+      ],
+      { smallBlind: 5, bigBlind: 10, seed: 3 }
+    );
+    t = startHand(t, { rotateButton: false });
+    const sb = t.players.find((p) => p.seat === t.toAct)!;
+    t = applyAction(t, sb.id, { type: 'call' }); // SB limps
+    const bb = t.players.find((p) => p.seat === t.toAct)!;
+    expect(bb.id).not.toBe(sb.id);
+    const legal = getLegalActions(t);
+    expect(legal).toContain('check');
+    expect(legal).toContain('raise');
+    expect(legal).not.toContain('bet');
+    t = applyAction(t, bb.id, { type: 'raise', amount: 40 });
+    expect(t.currentBet).toBe(40);
+    expect(t.toAct).toBe(sb.seat);
+  });
+
   it('supports fold win without showdown', () => {
     let t = createTable(
       [

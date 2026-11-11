@@ -463,7 +463,9 @@ export function getLegalActions(state: TableState): ActionType[] {
   if (toCall <= 0) {
     actions.push('check');
     if (player.stack > 0) {
-      actions.push('bet');
+      // Facing no bet: open with a bet. Already matched a live bet (e.g. big blind's
+      // preflop option): the only way to put more in is a raise.
+      actions.push(state.currentBet > 0 ? 'raise' : 'bet');
       actions.push('all-in');
     }
   } else {
