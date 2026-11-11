@@ -65,7 +65,14 @@ pnpm demo        # local server + 6 bots play 20 hands, every hand verified; exi
 | 974bd995 | [HWhPm3n2…](https://testnet.nearblocks.io/txns/HWhPm3n2FUu6JJ9KRKKoMS2teH3VrPjq5sfCBPyvwRsW) | [Ea9M7MW6…](https://testnet.nearblocks.io/txns/Ea9M7MW6sFF979Xi1VUZhzFxPq3rdeakqibAd7k1kQ77) | [AUtCynCh…](https://testnet.nearblocks.io/txns/AUtCynChUD3Q8PqeHZycQJHo4ruTFMht7PM9xbdZUFbr) |
 | 6ecb7718 | [FR7Pk9e3…](https://testnet.nearblocks.io/txns/FR7Pk9e3z4ZCoSA2A1PPVimtkCJ2KE1Pvzowq32dV3WT) | [25r3xemj…](https://testnet.nearblocks.io/txns/25r3xemjGjkdn1w7hQrST1soPnmkYi6y3nW5TCEJy2KK) | [EKFh4j31…](https://testnet.nearblocks.io/txns/EKFh4j31aXmtYgpigosQR1steo3VTLimx3msyTkDJ37n) |
 
-After those three hands the bots' on-chain vault balances matched the game stacks exactly and still summed to 1500 chips (1 chip = 0.001 NEAR).
+Hands played by the **NEAR AI Cloud bots** (Qwen in TEE, nonce-bound attestation; 21/21 moves signature-verified, ~1 s per move):
+
+| Hand | commit | reveal | settle |
+|---|---|---|---|
+| eb1b1f1c | [MoYSeHNk…](https://testnet.nearblocks.io/txns/MoYSeHNkTHGgsSFTucKo6nq5NYBg7xsJH5G5sbVrpWd) | [3uAhDbGE…](https://testnet.nearblocks.io/txns/3uAhDbGEuK3uHu9WGcwaWf5P9ddYp2TRjYApeTho7Z2f) | [2maragw5…](https://testnet.nearblocks.io/txns/2maragw53aEodJxASSPeNQDYBjUvA6LTBmB4fjAgGwei) |
+| d2f405e6 | [DYQjnsMt…](https://testnet.nearblocks.io/txns/DYQjnsMtBDZSADD6zLhx1YkFR5nsSaXxoMDwTiZtFn6D) | [GUSmisEM…](https://testnet.nearblocks.io/txns/GUSmisEMMoiLyLrEv54uzQ3sXjt49qFamd1GgdkMF9KJ) | [7MM7t4RA…](https://testnet.nearblocks.io/txns/7MM7t4RAvQUdUWyjYpb6BcAvtGtrxRDggHXU5Q4FZSCC) |
+
+After those first three hands the bots' on-chain vault balances matched the game stacks exactly and still summed to 1500 chips (1 chip = 0.001 NEAR).
 
 A later live run on testnet showed the contract doing its job: one all-in loss (374 chips) exceeded the then per-hand cap of 250, and `settle_hand` was **refused** on-chain. The owner raised the cap to 1.5 NEAR ([set_max_loss](https://testnet.nearblocks.io/txns/FpLrdnXNJKpDqJvaGYXPw56duFCqgWXp4LdjTdBradQ)) and the operator settled the same zero-sum deltas ([settle_hand](https://testnet.nearblocks.io/txns/9XV9czXugcLPry1GVH7oK3zSmePfTtVVfPyrWCiKCS1r)). Bots that go broke now leave the table before the next hand, so the vault is never asked to commit an empty account. Total in the vault is still 1500 chips.
 
@@ -115,3 +122,7 @@ INTERFACES.md           shared spec: deck derivation, contract API, public view
 ## Built with
 
 near-sdk 5.14, near-workspaces 5, near-api-js 7, @near-wallet-selector 10, @noble/hashes, NEAR AI Cloud, Next.js 14, Express, Socket.IO, MongoDB (in-memory for demos), vitest. Hackathon work was written with AI assistance (Claude Code).
+
+## License
+
+MIT, see [LICENSE](LICENSE). Original poker code by Nikku (Neeraj Choubisa), used and relicensed with permission.
