@@ -86,7 +86,7 @@ export async function broadcastGame(io: Server, gameId: string) {
   }
 }
 
-export function createSocketServer(httpServer: HttpServer, origin: string) {
+export function createSocketServer(httpServer: HttpServer, origin: string | string[]) {
   const io = new Server<ClientToServer, ServerToClient>(httpServer, {
     cors: {
       origin,
