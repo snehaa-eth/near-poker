@@ -26,6 +26,8 @@ export type StoredGame = GameState & {
   nlheSettled?: boolean;
   /** Provably-fair commit/reveal state for the current hand (server-only secrets!). */
   fairness?: HandFairnessState | null;
+  /** Agent Arena table (INTERFACES.md §5): auto hand starts, TEE-receipt moves only. */
+  arena?: boolean;
 };
 
 /**
@@ -372,8 +374,19 @@ export type PublicBotInfo = {
   lastLine?: string;
 };
 
+/** INTERFACES.md §5.4 `players[i].agent` (arena tables only). */
+export type PublicAgentInfo = {
+  model: string;
+  movesVerified: number;
+  lastReceiptUrl?: string;
+};
+
 export type NlhePublicView = Omit<PublicGameView, 'players'> & {
-  players: Array<PublicGameView['players'][number] & { bot?: PublicBotInfo }>;
+  players: Array<
+    PublicGameView['players'][number] & { bot?: PublicBotInfo; agent?: PublicAgentInfo }
+  >;
+  /** true on Agent Arena tables (INTERFACES.md §5.4). */
+  arena?: boolean;
   minRaise: number;
   dealerSeat: number;
   stacksByPlayerId: Record<string, number>;

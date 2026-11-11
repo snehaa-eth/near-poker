@@ -3,7 +3,7 @@ import type { Server as HttpServer } from 'node:http';
 import { parse as parseCookie } from 'cookie';
 import { Server } from 'socket.io';
 
-import { SESSION_COOKIE, getSession } from './auth.js';
+import { SESSION_COOKIE, SESSION_COOKIE_ALIAS, getSession } from './auth.js';
 import {
   actionBet,
   actionChooseCards,
@@ -15,6 +15,10 @@ import {
   getPublicState,
 } from './game-store.js';
 import { setBotMeta } from './bots.js';
+import { onArenaState } from './arena/lobby.js';
+import { setArenaRuntime } from './arena/runtime.js';
+import { handleAct, resendTurnTo, type ActPayload } from './arena/turns.js';
+import { setArenaStateListener } from './game-store.js';
 import { isValidEntropy, setEntropyCollector } from './fairness.js';
 import type { NlhePublicView } from './poker-bridge.js';
 
@@ -23,6 +27,15 @@ type ServerToClient = {
   'game:error': (payload: { error: string }) => void;
   'game:ended': (view: NlhePublicView) => void;
   'game:entropyRequest': (payload: { gameId: string; handId: string }) => void;
+  // Agent Arena (INTERFACES.md §5)
+  'arena:seated': (payload: { gameId: string }) => void;
+  'arena:turn': (payload: Record<string, unknown>) => void;
+  'arena:rejected': (payload: Record<string, unknown>) => void;
+  'arena:accepted': (payload: Record<string, unknown>) => void;
+  'arena:timeout': (payload: Record<string, unknown>) => void;
+  'arena:left': (payload: { gameId: string }) => void;
+  'arena:closed': (payload: { gameId: string }) => void;
+  'arena:queued': (payload: { position: number }) => void;
 };
 
 type ClientToServer = {
@@ -41,6 +54,8 @@ type ClientToServer = {
     handId: string;
     entropy: string;
   }) => void;
+  /** Agent Arena move with a NEAR AI Cloud TEE receipt (INTERFACES §5.3). */
+  'arena:act': (payload: ActPayload) => void;
   /** Bot sessions only: publish persona/model/attestation/lastLine (INTERFACES §4). */
   'bot:meta': (payload: { gameId: string; meta: Record<string, unknown> }) => void;
 };
@@ -53,7 +68,7 @@ type PendingEntropy = {
 };
 const pendingEntropy = new Map<string, PendingEntropy>();
 
-async function broadcastGame(io: Server, gameId: string) {
+export async function broadcastGame(io: Server, gameId: string) {
   const state = await getGame(gameId);
   if (!state) return;
   const room = io.sockets.adapter.rooms.get(`game:${gameId}`);
@@ -83,7 +98,8 @@ export function createSocketServer(httpServer: HttpServer, origin: string) {
     try {
       const raw = socket.request.headers.cookie ?? '';
       const cookies = parseCookie(raw);
-      const sessionId = cookies[SESSION_COOKIE];
+      // `nli_session` is accepted as an alias (INTERFACES §5.1 agent clients).
+      const sessionId = cookies[SESSION_COOKIE] ?? cookies[SESSION_COOKIE_ALIAS];
       const session = await getSession(sessionId);
       if (!session) {
         // Spectator: may watch rooms (sees no hole cards until showdown), cannot act.
@@ -99,6 +115,10 @@ export function createSocketServer(httpServer: HttpServer, origin: string) {
       next(error as Error);
     }
   });
+
+  // Agent Arena: emit helpers + run the turn engine / hand loop after every arena save.
+  setArenaRuntime(io as unknown as Server, (gameId) => broadcastGame(io as unknown as Server, gameId));
+  setArenaStateListener(onArenaState);
 
   // Provably-fair entropy (INTERFACES.md §1 step 3): ask the room, accept one
   // 16-byte hex value per seated player, resolve when all connected seated
@@ -152,6 +172,17 @@ export function createSocketServer(httpServer: HttpServer, origin: string) {
     socket.on('game:joinRoom', async ({ gameId }) => {
       socket.join(`game:${gameId}`);
       await broadcastGame(io, gameId);
+      // An agent that (re)joins mid-turn gets its pending arena:turn again.
+      resendTurnTo(gameId, playerId);
+    });
+
+    socket.on('arena:act', (payload) => {
+      void handleAct(socket, payload).catch((error) =>
+        socket.emit('arena:rejected', {
+          reason: 'InternalError',
+          detail: error instanceof Error ? error.message : String(error),
+        })
+      );
     });
 
     socket.on('game:start', ({ gameId }) =>

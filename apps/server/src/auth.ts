@@ -15,6 +15,8 @@ import {
 } from './near.js';
 
 export const SESSION_COOKIE = 'poker_session';
+/** Alias accepted from agent clients (INTERFACES §5.1 names the cookie `nli_session`). */
+export const SESSION_COOKIE_ALIAS = 'nli_session';
 export const NONCE_COOKIE = 'poker_login_nonce';
 const NONCE_TTL_MS = 5 * 60 * 1000;
 
@@ -264,6 +266,7 @@ authRouter.post('/profile', async (req, res) => {
   }
 
   res.cookie(SESSION_COOKIE, session.sessionId, sessionCookieOptions());
+  res.cookie(SESSION_COOKIE_ALIAS, session.sessionId, sessionCookieOptions());
   res.json(toSessionJson(session));
 });
 

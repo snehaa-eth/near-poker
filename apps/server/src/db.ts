@@ -57,6 +57,8 @@ const gameSchema = new Schema(
     winnerId: { type: String, default: null },
     playerIds: { type: [String], default: [], index: true },
     playerNicknames: { type: [String], default: [] },
+    /** Agent Arena table (INTERFACES.md §5). */
+    arena: { type: Boolean, default: false, index: true },
     /** Full authoritative game state (including deck — server only). */
     state: { type: Schema.Types.Mixed, required: true },
   },
@@ -79,6 +81,7 @@ export type GameDoc = {
   winnerId: string | null;
   playerIds: string[];
   playerNicknames: string[];
+  arena?: boolean;
   state: GameState;
   createdAt?: Date;
   updatedAt?: Date;

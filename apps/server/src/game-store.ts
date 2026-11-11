@@ -9,6 +9,7 @@ import {
   newServerSeed,
 } from './fairness.js';
 import { getBotMetaFor } from './bots.js';
+import { getAgentInfoFor } from './arena/moves.js';
 import { getLedger } from './ledger.js';
 import {
   createEmptyNlheLobby,
@@ -126,6 +127,7 @@ function lobbyFields(state: StoredGame) {
     winnerId: normalized.winnerId,
     playerIds: normalized.players.map((p) => p.id),
     playerNicknames: normalized.players.map((p) => p.nickname),
+    arena: Boolean(normalized.arena),
     state: normalized,
   };
 }
@@ -144,6 +146,13 @@ async function persistEvent(
     round: state.round,
     payload,
   });
+}
+
+/** Arena hook: called after every save of an arena table (turn engine + hand loop). */
+type ArenaStateListener = (state: StoredGame) => void;
+let arenaStateListener: ArenaStateListener | null = null;
+export function setArenaStateListener(fn: ArenaStateListener | null) {
+  arenaStateListener = fn;
 }
 
 async function save(
@@ -181,6 +190,13 @@ async function save(
       event.actorId ?? null,
       event.payload ?? {}
     );
+  }
+  if (normalized.arena && arenaStateListener) {
+    try {
+      arenaStateListener(normalized);
+    } catch (e) {
+      console.error('[arena] state listener failed', e);
+    }
   }
   return normalized;
 }
@@ -302,6 +318,7 @@ export async function joinExistingGame(
 ) {
   const state = await load(gameIdOrCode);
   if (!state) throw new Error('GameNotFound');
+  if (state.arena) throw new Error('ArenaTable: agents are seated via POST /arena/join');
 
   const alreadyIn = state.players.some((p) => p.id === player.id);
   if (!alreadyIn) {
@@ -395,6 +412,14 @@ export async function getPublicState(
     view.players = view.players.map((p) => {
       const bot = bots.get(p.id);
       return bot ? { ...p, bot: { ...bot } } : p;
+    });
+  }
+  if (state.arena) {
+    view.arena = true;
+    const agents = await getAgentInfoFor(view.players.map((p) => p.id));
+    view.players = view.players.map((p) => {
+      const agent = agents.get(p.id);
+      return agent ? { ...p, agent } : p;
     });
   }
   if (view.fairness) {
@@ -544,8 +569,23 @@ async function finalizeHand(state: StoredGame): Promise<StoredGame> {
   return { ...state, fairness };
 }
 
+/** True while `gameId` is in the commit → entropy → deal window. */
+export function isGameStarting(gameId: string) {
+  return starting.has(gameId);
+}
+
+/** Options for internal callers; `arena` = the arena engine itself (hand loop / TEE moves). */
+export type ActionOpts = { arena?: boolean };
+
+async function refuseOnArena(gameId: string, opts: ActionOpts | undefined, error: string) {
+  if (opts?.arena) return;
+  const state = memory.get(gameId) ?? (await load(gameId));
+  if (state?.arena) throw new Error(error);
+}
+
 /** Deal a real NLHE hand: commit seedHash → collect entropy → deal from deckSeed. */
-export async function actionStart(gameId: string, actorId?: string) {
+export async function actionStart(gameId: string, actorId?: string, opts?: ActionOpts) {
+  await refuseOnArena(gameId, opts, 'ArenaAutoStart: arena hands start automatically');
   if (starting.has(gameId)) throw new Error('HandStarting');
   starting.add(gameId);
   try {
@@ -772,8 +812,10 @@ export async function actionShuffle(gameId: string, playerId: string) {
 export async function actionBet(
   gameId: string,
   playerId: string,
-  amount: number
+  amount: number,
+  opts?: ActionOpts
 ) {
+  await refuseOnArena(gameId, opts, 'ArenaTeeOnly: arena moves need a TEE receipt (arena:act)');
   const next = await mutate(
     gameId,
     (s) => applyNlheBet(s, playerId, amount),
@@ -794,7 +836,8 @@ export async function actionBet(
   return next;
 }
 
-export async function actionFold(gameId: string, playerId: string) {
+export async function actionFold(gameId: string, playerId: string, opts?: ActionOpts) {
+  await refuseOnArena(gameId, opts, 'ArenaTeeOnly: arena moves need a TEE receipt (arena:act)');
   const next = await mutate(gameId, (s) => applyNlheFold(s, playerId), {
     type: 'game:fold',
     actorId: playerId,
@@ -867,4 +910,83 @@ export async function isInActiveHand(sessionId: string): Promise<boolean> {
     if (street && street !== 'complete' && street !== 'waiting') return true;
   }
   return false;
+}
+
+// ─── Agent Arena tables (INTERFACES.md §5) ──────────────────────────────────
+
+/** Open an arena table with the given agents seated (in order). */
+export async function createArenaTable(opts: {
+  name: string;
+  minChips: number;
+  players: Array<{ id: string; nickname: string }>;
+}) {
+  let joinCode = makeJoinCode();
+  for (let i = 0; i < 8; i++) {
+    if (!(await GameModel.exists({ joinCode }))) break;
+    joinCode = makeJoinCode();
+  }
+  let state: StoredGame = {
+    ...createEmptyNlheLobby({
+      name: opts.name.slice(0, 48),
+      minChips: Math.max(0, Math.floor(opts.minChips)),
+      maxPlayers: 6,
+      joinCode,
+    }),
+    arena: true,
+  };
+  for (const p of opts.players) state = { ...joinNlheLobby(state, p), arena: true };
+  return save(state, {
+    type: 'arena:open',
+    actorId: null,
+    payload: { players: opts.players.map((p) => p.id) },
+  });
+}
+
+function handActive(state: StoredGame) {
+  return Boolean(
+    state.nlhe && state.nlhe.street !== 'complete' && state.nlhe.street !== 'waiting'
+  );
+}
+
+/**
+ * Between hands on an arena table: unseat `leaving` agents and agents with no chips.
+ * Throws HandInProgress / HandStarting while a hand runs. Returns the table and who left.
+ */
+export async function prepareArenaHand(gameId: string, leaving: Set<string>) {
+  if (starting.has(gameId)) throw new Error('HandStarting');
+  const state = await load(gameId);
+  if (!state) throw new Error('GameNotFound');
+  if (handActive(state)) throw new Error('HandInProgress');
+  const stacks = state.nlhe
+    ? Object.fromEntries(state.nlhe.players.map((p) => [p.id, p.stack]))
+    : await loadStacksForPlayers(state.players.map((p) => p.id));
+  const removed = state.players
+    .filter((p) => leaving.has(p.id) || (stacks[p.id] ?? 0) <= 0)
+    .map((p) => p.id);
+  if (removed.length === 0) return { state, removed };
+  const gone = new Set(removed);
+  const next = await save(
+    { ...state, players: state.players.filter((p) => !gone.has(p.id)), nlhe: null },
+    { type: 'arena:leave', actorId: null, payload: { removed } }
+  );
+  for (const id of removed) {
+    await recordGameActivity({
+      sessionId: id,
+      type: 'arena:leave',
+      summary: `Left arena table ${gameId.slice(0, 8)}`,
+      gameId,
+    });
+  }
+  return { state: next, removed };
+}
+
+/** Close an arena table between hands: unseat everyone and mark it ended. */
+export async function closeArenaTable(gameId: string) {
+  const state = await load(gameId);
+  if (!state) return null;
+  if (handActive(state) || starting.has(gameId)) throw new Error('HandInProgress');
+  return save(
+    { ...state, players: [], nlhe: null, status: 'ended' },
+    { type: 'arena:close', actorId: null, payload: { players: state.players.map((p) => p.id) } }
+  );
 }
