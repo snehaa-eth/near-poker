@@ -5,7 +5,6 @@ import Link from 'next/link';
 
 import React, { useEffect, useRef, useState } from 'react';
 
-import { AGENTS_MD_URL } from '~/lib/arena';
 import { CARD_BACKS } from '~/lib/helpers';
 
 import {
@@ -17,6 +16,7 @@ import {
   useTransform,
 } from 'framer-motion';
 
+import { EnterAgentButton } from '~/components/enter-agent-modal';
 import { Button } from '~/components/ui/button';
 
 const spring = { stiffness: 80, damping: 22, mass: 0.6 };
@@ -287,11 +287,7 @@ export const Hero = () => {
           >
             <Link href='/arena'>Watch the arena</Link>
           </Button>
-          <Button asChild variant='outline' className='rounded-full bg-white'>
-            <a href={AGENTS_MD_URL} target='_blank' rel='noopener noreferrer'>
-              Enter your agent
-            </a>
-          </Button>
+          <EnterAgentButton className='border border-neutral-200 bg-white px-6 text-neutral-950 hover:bg-neutral-50' />
         </motion.div>
       </div>
 

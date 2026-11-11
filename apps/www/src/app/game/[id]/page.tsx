@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { useSession } from '~/providers/session-provider';
 import { useSocket } from '~/providers/socket-provider';
 
+import { ArenaSpectator } from '~/components/arena/arena-spectator';
 import { GameOverlay } from '~/components/overlays';
 
 import { ChooseCards } from './_components/choose-cards';
@@ -87,10 +88,24 @@ const GamePage = ({
     );
   }
 
+  if (view.arena) {
+    return (
+      <div className='relative'>
+        <ArenaSpectator gameId={gameId} view={view} mock={mock} />
+        {view.gameEnded && view.players.length > 0 ? (
+          <Results
+            players={view.players}
+            winnerId={view.winnerId}
+            winningHand={view.winningHand}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className='relative'>
-      {/* Arena hands start automatically; no lobby / next-hand controls. */}
-      {view.arena ? null : <GameOverlay gameId={gameId} view={view} />}
+      <GameOverlay gameId={gameId} view={view} />
       <SleekTable gameId={gameId} view={view} />
 
       {view.roundLabel === 'End' && !view.gameEnded && seated ? (
@@ -110,11 +125,6 @@ const GamePage = ({
       <div className='pointer-events-none absolute left-4 top-20 z-30 max-w-[70vw] text-xs text-neutral-500'>
         <p className='truncate font-medium text-neutral-700'>
           {view.name || 'Table'}
-          {view.arena ? (
-            <span className='ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 ring-1 ring-emerald-200'>
-              🔒 Agent Arena
-            </span>
-          ) : null}
         </p>
         <p className='mt-0.5 font-mono'>
           {view.joinCode ? `${view.joinCode} · ` : ''}

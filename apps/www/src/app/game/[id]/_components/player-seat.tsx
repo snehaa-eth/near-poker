@@ -81,15 +81,26 @@ function BotBadge({ bot }: { bot: BotInfo }) {
 }
 
 /** Arena agent (INTERFACES §5.4): every accepted move carries a TEE receipt. */
-function AgentBadge({ agent }: { agent: AgentInfo }) {
+function AgentBadge({
+  agent,
+  compact = false,
+}: {
+  agent: AgentInfo;
+  compact?: boolean;
+}) {
   return (
     <Popover>
       <PopoverTrigger
-        className='max-w-[8.5rem] shrink-0 truncate rounded-full bg-emerald-50 px-1.5 py-[1px] text-[10px] font-semibold text-emerald-800 ring-1 ring-emerald-200 transition hover:bg-emerald-100 lg:text-[11px]'
+        className={cn(
+          'shrink-0 rounded-full bg-emerald-50 font-semibold text-emerald-800 ring-1 ring-emerald-200 transition hover:bg-emerald-100',
+          compact
+            ? 'px-1.5 py-[1px] text-[9px]'
+            : 'max-w-[8.5rem] truncate px-1.5 py-[1px] text-[10px] lg:text-[11px]'
+        )}
         aria-label='TEE agent details'
         title={agent.model}
       >
-        🔒 TEE · {shortModel(agent.model, 14)}
+        {compact ? '🔒 TEE' : `🔒 TEE · ${shortModel(agent.model, 14)}`}
       </PopoverTrigger>
       <PopoverContent
         side='top'
@@ -158,6 +169,10 @@ interface PlayerSeatProps {
   isWinner?: boolean;
   /** Best hand name when the win came at showdown. */
   winningHand?: string;
+  /** NLHE seat label (BTN, SB, BB, …). */
+  positionLabel?: string | null;
+  /** Narrower seat pill for the arena spectator shell. */
+  compact?: boolean;
   stack: number;
   avatarUrl?: string | null;
   style?: React.CSSProperties;
@@ -188,6 +203,8 @@ export const PlayerSeat = ({
   isDealer,
   isWinner = false,
   winningHand,
+  positionLabel = null,
+  compact = false,
   stack,
   avatarUrl,
   style,
@@ -200,8 +217,9 @@ export const PlayerSeat = ({
   return (
     <div
       className={cn(
-        'absolute z-20 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1.5 transition-opacity lg:gap-2',
-        player.folded && 'opacity-35'
+        'absolute z-20 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center transition-opacity',
+        compact ? 'gap-1' : 'gap-1.5 lg:gap-2',
+        player.folded && 'opacity-45'
       )}
       style={style}
     >
@@ -225,18 +243,18 @@ export const PlayerSeat = ({
                 isMe && 'hover:-translate-y-1',
                 i === 0 ? '-rotate-6' : 'rotate-6'
               )}
-              size={isMe ? 'lg' : 'sm'}
+              size={compact ? 'sm' : isMe ? 'lg' : 'sm'}
             />
           ))}
         </div>
       ) : null}
 
       {player.chipsInPot > 0 ? (
-        <div className='rounded-full bg-white px-2.5 py-0.5 shadow-sm'>
+        <div className='rounded-full bg-white px-2 py-0.5 shadow-sm'>
           <ChipAmount
             value={player.chipsInPot}
             size='sm'
-            className='text-[11px] font-semibold text-neutral-700 lg:text-xs'
+            className='text-[11px] font-semibold text-neutral-700'
             iconClassName='h-3.5 w-3.5'
           />
         </div>
@@ -244,13 +262,23 @@ export const PlayerSeat = ({
 
       <div className='relative'>
         {isDealer ? (
-          <div className='absolute -left-3.5 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-neutral-950 text-[10px] font-bold text-white shadow lg:h-6 lg:w-6 lg:text-xs'>
+          <div
+            className={cn(
+              'absolute z-10 flex -translate-y-1/2 items-center justify-center rounded-full bg-neutral-950 font-bold text-white shadow',
+              compact
+                ? '-left-3 top-1/2 h-4 w-4 text-[9px]'
+                : '-left-3.5 top-1/2 h-5 w-5 text-[10px] lg:h-6 lg:w-6 lg:text-xs'
+            )}
+          >
             D
           </div>
         ) : null}
         <div
           className={cn(
-            'flex items-center gap-2 rounded-full border bg-white/95 py-1.5 pl-1.5 pr-3.5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] backdrop-blur lg:py-2 lg:pl-2 lg:pr-4',
+            'flex items-center border bg-white/95 shadow-[0_4px_20px_rgba(0,0,0,0.06)] backdrop-blur',
+            compact
+              ? 'max-w-[9.75rem] gap-1.5 rounded-2xl py-1 pl-1 pr-2'
+              : 'gap-2 rounded-full py-1.5 pl-1.5 pr-3.5 lg:py-2 lg:pl-2 lg:pr-4',
             isWinner
               ? 'border-amber-400 ring-[3px] ring-amber-300/60'
               : isTurn
@@ -261,7 +289,12 @@ export const PlayerSeat = ({
           )}
         >
           {avatarUrl ? (
-            <div className='h-9 w-9 shrink-0 overflow-hidden rounded-full bg-neutral-100 lg:h-10 lg:w-10'>
+            <div
+              className={cn(
+                'shrink-0 overflow-hidden rounded-full bg-neutral-100',
+                compact ? 'h-7 w-7' : 'h-9 w-9 lg:h-10 lg:w-10'
+              )}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={avatarUrl}
@@ -271,37 +304,60 @@ export const PlayerSeat = ({
             </div>
           ) : (
             <div
-              className='flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white lg:h-10 lg:w-10'
+              className={cn(
+                'flex shrink-0 items-center justify-center rounded-full font-semibold text-white',
+                compact ? 'h-7 w-7 text-xs' : 'h-9 w-9 text-sm lg:h-10 lg:w-10'
+              )}
               style={{ background: avatarColor(player.nickname) }}
             >
               {player.nickname.slice(0, 1).toUpperCase()}
             </div>
           )}
-          <div className='min-w-0 leading-tight'>
-            <div className='flex items-center gap-1'>
-              <span className='max-w-[7.5rem] truncate text-[13px] font-semibold text-neutral-900 lg:max-w-[9rem] lg:text-sm'>
+          <div className='min-w-0 flex-1 leading-tight'>
+            <div className='flex min-w-0 items-center gap-1'>
+              <span
+                className={cn(
+                  'truncate font-semibold text-neutral-900',
+                  compact ? 'text-[11px]' : 'max-w-[7.5rem] text-[13px] lg:max-w-[9rem] lg:text-sm'
+                )}
+              >
                 {isMe ? `${player.nickname} (you)` : player.nickname}
               </span>
-              {player.agent ? (
+              {positionLabel ? (
+                <span className='shrink-0 rounded bg-neutral-900 px-1 py-[1px] text-[9px] font-bold uppercase tracking-wide text-white'>
+                  {positionLabel}
+                </span>
+              ) : null}
+              {!compact && player.agent ? (
                 <AgentBadge agent={player.agent} />
-              ) : player.bot ? (
+              ) : !compact && player.bot ? (
                 <BotBadge bot={player.bot} />
               ) : null}
             </div>
-            <div className='text-[11px] text-neutral-500 lg:text-xs'>
+            <div className='mt-0.5 flex min-w-0 items-center gap-1 text-[10px] text-neutral-500'>
               <ChipAmount
                 value={Math.max(stack - player.chipsInPot, 0)}
                 size='sm'
-                className='text-[11px] font-normal text-neutral-500 lg:text-xs'
-                iconClassName='h-3.5 w-3.5'
+                className='text-[10px] font-normal text-neutral-500'
+                iconClassName='h-3 w-3'
               />
+              {player.folded ? (
+                <span className='font-semibold uppercase tracking-wide text-neutral-400'>
+                  folded
+                </span>
+              ) : null}
+              {compact && player.agent ? (
+                <AgentBadge agent={player.agent} compact />
+              ) : compact && player.bot ? (
+                <BotBadge bot={player.bot} />
+              ) : null}
             </div>
           </div>
         </div>
       </div>
 
       {isWinner ? (
-        <div className='rounded-full bg-amber-400 px-2.5 py-0.5 text-[11px] font-semibold text-neutral-950 shadow lg:text-xs'>
+        <div className='rounded-full bg-amber-400 px-2.5 py-0.5 text-[11px] font-semibold text-neutral-950 shadow'>
           🏆 Winner{winningHand ? ` · ${winningHand}` : ''}
         </div>
       ) : null}
@@ -309,7 +365,7 @@ export const PlayerSeat = ({
       {isTurn ? (
         <div
           className={cn(
-            'flex items-center gap-1.5 text-[11px] font-medium tabular-nums lg:text-xs',
+            'flex items-center gap-1 text-[10px] font-medium tabular-nums',
             urgent ? 'animate-pulse text-red-500' : 'text-[#1D9BF0]'
           )}
         >
@@ -323,45 +379,48 @@ export const PlayerSeat = ({
   );
 };
 
+/** Seat anchors around the oval. `inset` pulls seats in so wide pills don’t clip. */
 export function seatPositions(
-  count: number
+  count: number,
+  opts?: { inset?: boolean }
 ): Array<{ left: string; top: string }> {
+  const inset = Boolean(opts?.inset);
   if (count <= 2) {
     return [
-      { left: '50%', top: '90%' },
-      { left: '50%', top: '10%' },
+      { left: '50%', top: inset ? '84%' : '90%' },
+      { left: '50%', top: inset ? '16%' : '10%' },
     ];
   }
   if (count === 3) {
     return [
-      { left: '50%', top: '90%' },
-      { left: '10%', top: '38%' },
-      { left: '90%', top: '38%' },
+      { left: '50%', top: inset ? '84%' : '90%' },
+      { left: inset ? '16%' : '10%', top: '38%' },
+      { left: inset ? '84%' : '90%', top: '38%' },
     ];
   }
   if (count === 4) {
     return [
-      { left: '50%', top: '90%' },
-      { left: '8%', top: '48%' },
-      { left: '50%', top: '10%' },
-      { left: '92%', top: '48%' },
+      { left: '50%', top: inset ? '84%' : '90%' },
+      { left: inset ? '14%' : '8%', top: '48%' },
+      { left: '50%', top: inset ? '16%' : '10%' },
+      { left: inset ? '86%' : '92%', top: '48%' },
     ];
   }
   if (count === 5) {
     return [
-      { left: '50%', top: '90%' },
-      { left: '8%', top: '58%' },
-      { left: '16%', top: '16%' },
-      { left: '84%', top: '16%' },
-      { left: '92%', top: '58%' },
+      { left: '50%', top: inset ? '84%' : '90%' },
+      { left: inset ? '14%' : '8%', top: '58%' },
+      { left: inset ? '20%' : '16%', top: inset ? '20%' : '16%' },
+      { left: inset ? '80%' : '84%', top: inset ? '20%' : '16%' },
+      { left: inset ? '86%' : '92%', top: '58%' },
     ];
   }
   return [
-    { left: '50%', top: '90%' },
-    { left: '10%', top: '68%' },
-    { left: '10%', top: '26%' },
-    { left: '50%', top: '8%' },
-    { left: '90%', top: '26%' },
-    { left: '90%', top: '68%' },
+    { left: '50%', top: inset ? '84%' : '90%' },
+    { left: inset ? '15%' : '10%', top: inset ? '64%' : '68%' },
+    { left: inset ? '15%' : '10%', top: inset ? '30%' : '26%' },
+    { left: '50%', top: inset ? '14%' : '8%' },
+    { left: inset ? '85%' : '90%', top: inset ? '30%' : '26%' },
+    { left: inset ? '85%' : '90%', top: inset ? '64%' : '68%' },
   ];
 }

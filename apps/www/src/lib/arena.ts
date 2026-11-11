@@ -97,6 +97,16 @@ const MOCK_AGENTS = [
     nickname: 'Nit',
     model: 'zai-org/GLM-4.6',
   },
+  {
+    walletAddress: 'fox-agent.testnet',
+    nickname: 'Fox',
+    model: 'Qwen/Qwen3.6-35B-A3B-FP8',
+  },
+  {
+    walletAddress: 'owl-agent.testnet',
+    nickname: 'Owl',
+    model: 'Qwen/Qwen3.6-35B-A3B-FP8',
+  },
 ] as const;
 
 export const MOCK_GAME_ID = 'mock-arena-1';
@@ -150,60 +160,73 @@ export const mockArenaTables = (): ArenaTable[] => [
 export const mockArenaLeaderboard = (): ArenaLeaderboardEntry[] =>
   MOCK_AGENTS.map((a, i) => ({
     ...a,
-    hands: [128, 97, 64, 23][i]!,
-    netChips: [1840, 312, -655, -1497][i]!,
-    movesVerified: [512, 401, 266, 88][i]!,
+    hands: [128, 97, 64, 55, 41, 23][i]!,
+    netChips: [1840, 912, 312, -220, -655, -1497][i]!,
+    movesVerified: [512, 401, 266, 190, 144, 88][i]!,
     lastSeen: new Date(Date.UTC(2026, 10, 11, 12, i)).toISOString(),
   }));
 
 export const mockArenaMoves = (): ArenaMoveRecord[] => [
-  mockMove(0, 'raise', 40),
+  mockMove(3, 'raise', 40),
+  mockMove(4, 'call', 40),
+  mockMove(5, 'fold'),
+  mockMove(0, 'call', 40),
   mockMove(1, 'call', 40),
+  mockMove(2, 'fold'),
   mockMove(0, 'check'),
   mockMove(1, 'raise', 120),
-  mockMove(0, 'fold'),
+  mockMove(3, 'call', 120),
+  mockMove(4, 'fold'),
+  mockMove(0, 'call', 120),
 ];
 
 export function mockArenaView(gameId: string): PublicGameView {
-  const players = MOCK_AGENTS.slice(0, 3).map((a, i) => {
-    const last = mockMove(i, 'call', 40);
+  // UI card ids are unique 0..51 (rank = id%13, suit = floor(id/13); A=12).
+  // Board: 4♥ Q♣ K♣ A♠ K♥ — hole cards must not repeat those.
+  const board = [15, 49, 50, 12, 24]; // 4H, QC, KC, AS, KH
+  const foldedSeats = new Set([2, 5]);
+  const players = MOCK_AGENTS.map((a, i) => {
+    const last = mockMove(i, foldedSeats.has(i) ? 'fold' : 'call', 40);
     return {
       id: a.walletAddress,
       nickname: a.nickname,
       seat: i,
-      chipsInPot: i === 2 ? 0 : 40,
-      folded: i === 2,
+      chipsInPot: foldedSeats.has(i) ? 20 : 120,
+      folded: foldedSeats.has(i),
       shuffled: true,
-      holeCards: [-1, -1],
+      // Shark: 2♣ A♦ · Grinder: Q♠ 6♠ — distinct from the board
+      holeCards: i === 0 ? [39, 38] : i === 1 ? [10, 4] : [-1, -1],
       chosenCommunity: [],
       weight: 0,
       agent: {
         model: a.model,
-        movesVerified: [512, 401, 266][i]!,
+        movesVerified: [512, 401, 266, 190, 144, 88][i]!,
         lastReceiptUrl: receiptUrl(last),
       },
     };
   });
   return {
     gameId,
-    name: 'Arena #1 (mock)',
+    name: 'Arena #4591',
     joinCode: '',
     minChips: 100,
     maxPlayers: 6,
     status: 'playing',
-    round: 'Flop',
-    roundLabel: 'Flop',
-    street: 'flop',
+    round: 'River',
+    roundLabel: 'River',
+    street: 'river',
     players,
-    communityCards: [12, 25, 38, -1, -1],
-    pot: 80,
-    highestBet: 40,
-    minRaise: 20,
+    communityCards: board,
+    pot: 3251,
+    highestBet: 120,
+    minRaise: 40,
     dealerSeat: 0,
-    stacksByPlayerId: Object.fromEntries(players.map((p) => [p.id, 1000])),
-    nextSeat: 0,
-    nextPlayerId: players[0]!.id,
-    nextPlayerNickname: players[0]!.nickname,
+    stacksByPlayerId: Object.fromEntries(
+      players.map((p, i) => [p.id, [2400, 1800, 900, 1500, 1100, 700][i]!])
+    ),
+    nextSeat: 1,
+    nextPlayerId: players[1]!.id,
+    nextPlayerNickname: players[1]!.nickname,
     winnerId: null,
     winnerNickname: null,
     totalPlayers: players.length,

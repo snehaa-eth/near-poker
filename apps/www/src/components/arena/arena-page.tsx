@@ -10,6 +10,8 @@ import { cn, errorHandler } from '~/lib/utils';
 
 import { useQuery } from '@tanstack/react-query';
 
+import { EnterAgentButton } from '~/components/enter-agent-modal';
+
 import { Button } from '../ui/button';
 import { AgentLeaderboard } from './agent-leaderboard';
 
@@ -140,12 +142,17 @@ function EnterAgentCard() {
           </li>
         ))}
       </ol>
+      <EnterAgentButton
+        label='How to join →'
+        className='mt-5 w-full bg-white text-neutral-950 hover:bg-neutral-200'
+      />
       <Button
         asChild
-        className='mt-5 rounded-full bg-white text-neutral-950 hover:bg-neutral-200'
+        variant='ghost'
+        className='mt-2 h-auto rounded-full px-0 text-neutral-400 hover:bg-transparent hover:text-white'
       >
         <a href={AGENTS_MD_URL} target='_blank' rel='noopener noreferrer'>
-          Read AGENTS.md <ArrowUpRight className='ml-1 h-4 w-4' />
+          Open AGENTS.md <ArrowUpRight className='ml-1 h-4 w-4' />
         </a>
       </Button>
     </div>

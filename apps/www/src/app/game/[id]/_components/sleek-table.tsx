@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { PublicGameView } from '~/lib/api';
 import { ARENA_TURN_SECONDS } from '~/lib/arena';
+import { positionLabel } from '~/lib/poker-positions';
 import { playSound } from '~/lib/sounds';
 import { cn } from '~/lib/utils';
 
@@ -34,6 +35,10 @@ interface SleekTableProps {
   preview?: boolean;
   /** Compact layout for side-by-side testing. */
   compact?: boolean;
+  /** Fit inside the arena spectator shell (no full-viewport chrome). */
+  embedded?: boolean;
+  /** Show BTN / SB / BB / … labels on seats. */
+  showPositions?: boolean;
   /** Offline / dummy table actions. */
   onLocalAction?: (action: LocalTableAction) => void;
 }
@@ -52,6 +57,8 @@ export const SleekTable = ({
   stacksByPlayerId,
   preview = false,
   compact = false,
+  embedded = false,
+  showPositions = false,
   onLocalAction,
 }: SleekTableProps) => {
   const { user } = useSession();
@@ -147,7 +154,9 @@ export const SleekTable = ({
     return [...players.slice(myIndex), ...players.slice(0, myIndex)];
   }, [view.players, view.myPlayerId]);
 
-  const positions = seatPositions(Math.max(ordered.length, 2));
+  const positions = seatPositions(Math.max(ordered.length, 2), {
+    inset: embedded,
+  });
   const board = view.communityCards.filter((c) => c >= 0);
   /** Arena table closed: every agent left (or was re-queued). */
   const tableFinished = Boolean(view.arena) && view.players.length === 0;
@@ -162,7 +171,11 @@ export const SleekTable = ({
     <div
       className={cn(
         'relative flex w-full flex-col overflow-hidden',
-        compact ? 'h-full min-h-[28rem] pt-2' : 'h-[100dvh] pt-16'
+        embedded
+          ? 'min-h-[30rem] py-4 sm:min-h-[34rem]'
+          : compact
+            ? 'h-full min-h-[28rem] pt-2'
+            : 'h-[100dvh] pt-16'
       )}
     >
       {/* Felt photo sits behind the whole play surface */}
@@ -181,13 +194,22 @@ export const SleekTable = ({
         className='pointer-events-none absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/30'
       />
 
-      <div className='relative z-10 mx-auto flex min-h-0 w-full max-w-6xl flex-1 items-center justify-center px-2 sm:px-4 lg:max-w-7xl xl:max-w-[84rem]'>
+      <div
+        className={cn(
+          'relative z-10 mx-auto flex min-h-0 w-full flex-1 items-center justify-center',
+          embedded
+            ? 'max-w-none px-3 sm:px-5'
+            : 'max-w-6xl px-2 sm:px-4 lg:max-w-7xl xl:max-w-[84rem]'
+        )}
+      >
         <div
           className={cn(
             'relative aspect-[1.75/1] w-full',
-            compact
-              ? 'max-h-[min(42vh,360px)]'
-              : 'max-h-[min(calc(100dvh-13.5rem),560px)] lg:max-h-[min(calc(100dvh-13.5rem),640px)] xl:max-h-[min(calc(100dvh-13.5rem),700px)]'
+            embedded
+              ? 'max-h-[min(58vh,460px)] sm:max-h-[min(60vh,520px)]'
+              : compact
+                ? 'max-h-[min(42vh,360px)]'
+                : 'max-h-[min(calc(100dvh-13.5rem),560px)] lg:max-h-[min(calc(100dvh-13.5rem),640px)] xl:max-h-[min(calc(100dvh-13.5rem),700px)]'
           )}
         >
           {/* Table rail + felt window over the photo */}
@@ -317,6 +339,12 @@ export const SleekTable = ({
                 isTurn={isTurn}
                 isWinner={isWinner}
                 winningHand={isWinner ? view.winningHand : undefined}
+                positionLabel={
+                  showPositions
+                    ? positionLabel(player.seat, dealerSeat, ordered.length)
+                    : null
+                }
+                compact={embedded}
                 turnSecondsLeft={isTurn && turnActive ? secondsLeft : null}
                 player={player}
                 stack={seatStacks?.[player.id] ?? defaultStack}
@@ -329,6 +357,7 @@ export const SleekTable = ({
       </div>
 
       {!preview && spectator ? (
+        embedded ? null : (
         <div
           className={cn(
             'relative z-10 flex shrink-0 flex-wrap items-start justify-center gap-2',
@@ -344,6 +373,7 @@ export const SleekTable = ({
           </span>
           {view.arena ? <HowToWatch /> : null}
         </div>
+        )
       ) : !preview &&
         view.status === 'playing' &&
         view.round !== 'End' &&
@@ -376,7 +406,10 @@ export const SleekTable = ({
         </div>
       ) : (
         <div
-          className={cn('relative z-10 shrink-0', compact ? 'h-6' : 'h-24')}
+          className={cn(
+            'relative z-10 shrink-0',
+            embedded || compact ? 'h-2' : 'h-24'
+          )}
         />
       )}
     </div>

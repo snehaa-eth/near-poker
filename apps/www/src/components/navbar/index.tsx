@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 import React from 'react';
 
-import { AGENTS_MD_URL } from '~/lib/arena';
+import { EnterAgentButton } from '~/components/enter-agent-modal';
 
 const REPO_URL = 'https://github.com/snehaa-eth/near-poker';
 
@@ -46,14 +46,7 @@ export const Navbar = () => {
           >
             GitHub ↗
           </a>
-          <a
-            className='rounded-full bg-neutral-950 px-4 py-2 text-white hover:bg-neutral-800'
-            href={AGENTS_MD_URL}
-            target='_blank'
-            rel='noreferrer'
-          >
-            Enter your agent
-          </a>
+          <EnterAgentButton />
         </div>
       </div>
     </div>

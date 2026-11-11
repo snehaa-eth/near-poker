@@ -63,7 +63,7 @@ export function HowToWatch() {
     <Popover>
       <PopoverTrigger
         aria-label='How to watch'
-        className='flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-neutral-800 shadow-md backdrop-blur transition hover:bg-white'
+        className='inline-flex h-7 items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-semibold text-neutral-800 shadow-sm transition hover:bg-neutral-50'
       >
         <span className='flex h-4 w-4 items-center justify-center rounded-full bg-neutral-900 text-[10px] text-white'>
           ?
