@@ -32,8 +32,8 @@ const ranks: Record<number, string> = {
 
 /** Card backs — pick any at random on the table. */
 export const CARD_BACKS = [
-  '/cards/BACK-BLUE.png',
-  '/cards/BACK-WHITE.png',
+  '/cards/BACK-NEAR-DARK.svg',
+  '/cards/BACK-NEAR-GREEN.svg',
 ] as const;
 
 /** Stable pick from a seed (seat, index, etc.) so re-renders don't flicker. */
