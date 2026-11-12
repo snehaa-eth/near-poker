@@ -28,7 +28,7 @@ import { CUSTOM_MAX, PERSONAS, cleanCustom, isPersonaId, personaLabel } from './
 import { RateLimiter } from './rate-limit.js';
 import { isRunning, liveGameId, liveLogs, startAgent, stopAgent } from './runner.js';
 import { chipsOf, statsFor, tableOf } from './stats.js';
-import { WalletError, createWallet } from './wallet.js';
+import { WalletError, createWallet, withdrawWallet } from './wallet.js';
 
 export const hostedRouter = Router();
 
@@ -335,6 +335,28 @@ hostedRouter.post('/:id/download', async (req, res) => {
   } catch (e) {
     console.error('[hosted] download failed:', (e as Error).message);
     fail(res, 500, 'DownloadFailed');
+  }
+});
+
+const NEAR_ACCOUNT_RE = /^(?=.{2,64}$)(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
+
+/** Owner cash-out: whole vault balance out, then (optionally) sent to `to`. Agent must be stopped. */
+hostedRouter.post('/:id/withdraw', async (req, res) => {
+  const doc = await loadOwned(req, res);
+  if (!doc) return;
+  if (isRunning(doc.agentId)) return fail(res, 409, 'StopFirst: stop the agent before withdrawing');
+  const rawTo = (req.body as { to?: unknown } | undefined)?.to;
+  const to = typeof rawTo === 'string' && rawTo.trim() ? rawTo.trim().toLowerCase() : null;
+  if (to && !NEAR_ACCOUNT_RE.test(to)) return fail(res, 400, 'BadAccount: not a valid NEAR account id');
+  if (to === doc.walletAddress) return fail(res, 400, 'BadAccount: that is the agent wallet itself');
+  try {
+    const r = await withdrawWallet(getHostedConfig(), doc.walletAddress, decryptSecret(doc.encryptedAgentPrivateKey), to);
+    console.log(`[hosted] withdraw ${doc.name}: vault ${r.withdrawnYocto} yocto${to ? `, sent ${r.sentYocto} to ${to}` : ''}`);
+    res.json(r);
+  } catch (e) {
+    if (e instanceof WalletError) return fail(res, e.status, e.message);
+    console.error('[hosted] withdraw failed:', (e as Error).message);
+    fail(res, 502, `WithdrawFailed: ${(e as Error).message.slice(0, 160)}`);
   }
 });
 

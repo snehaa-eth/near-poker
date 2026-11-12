@@ -58,6 +58,11 @@ export type ChainOps = {
   funderAvailableYocto(): Promise<bigint>;
   createSubAccount(id: string, publicKey: string, near: string): Promise<string | undefined>;
   deposit(id: string, key: KeyPairString, near: string): Promise<string | undefined>;
+  /** Withdraw support (optional so older test stubs still type-check). */
+  vaultBalanceYocto?(id: string): Promise<bigint>;
+  vaultWithdraw?(id: string, key: KeyPairString, yocto: bigint): Promise<string | undefined>;
+  availableYocto?(id: string): Promise<bigint>;
+  transfer?(id: string, key: KeyPairString, to: string, yocto: bigint): Promise<string | undefined>;
 };
 
 export function nearChainOps(cfg: HostedConfig): ChainOps {
@@ -86,6 +91,26 @@ export function nearChainOps(cfg: HostedConfig): ChainOps {
         receiverId: cfg.vaultId!,
         actions: [actions.functionCall('deposit', {}, teraToGas('30'), nearToYocto(near as `${number}`))],
       });
+      return txHash(r);
+    },
+    async vaultBalanceYocto(id) {
+      const v = await p.callFunction({ contractId: cfg.vaultId!, method: 'balance_of', args: { account_id: id } });
+      return BigInt(String(v ?? '0'));
+    },
+    async vaultWithdraw(id, key, yocto) {
+      const acc = new Account(id, p, key);
+      const r = await acc.signAndSendTransaction({
+        receiverId: cfg.vaultId!,
+        actions: [actions.functionCall('withdraw', { amount: yocto.toString() }, teraToGas('50'), 0n)],
+      });
+      return txHash(r);
+    },
+    async availableYocto(id) {
+      return (await new Account(id, p).getState()).balance.available;
+    },
+    async transfer(id, key, to, yocto) {
+      const acc = new Account(id, p, key);
+      const r = await acc.signAndSendTransaction({ receiverId: to, actions: [actions.transfer(yocto)] });
       return txHash(r);
     },
   };
@@ -119,11 +144,60 @@ export async function createWallet(cfg: HostedConfig, name: string): Promise<New
     throw new WalletError(503, 'HostedFunderLow: the server is out of free test NEAR for new agents. Try again later.');
   }
   const createTx = await ops.createSubAccount(accountId, kp.getPublicKey().toString(), fmt(cfg.fundNear));
-  try {
-    const depTx = await ops.deposit(accountId, privateKey as KeyPairString, fmt(cfg.depositNear));
-    return { accountId, privateKey, txs: { createAccount: createTx, deposit: depTx } };
-  } catch (e) {
-    // The account exists and holds the NEAR; keep it (the owner can still download the key).
-    return { accountId, privateKey, txs: { createAccount: createTx }, depositError: (e as Error).message.slice(0, 200) };
+  // A brand-new account can be briefly invisible to the RPC node that signs the deposit
+  // ("access key not found"), so retry a few times before giving up.
+  let lastError = '';
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const depTx = await ops.deposit(accountId, privateKey as KeyPairString, fmt(cfg.depositNear));
+      return { accountId, privateKey, txs: { createAccount: createTx, deposit: depTx } };
+    } catch (e) {
+      lastError = (e as Error).message.slice(0, 200);
+      console.warn(`[hosted] vault deposit for ${accountId} failed (attempt ${attempt}/3): ${lastError}`);
+      if (attempt < 3 && !chainOpsOverride) await new Promise((r) => setTimeout(r, 2500 * attempt));
+    }
   }
+  // The account exists and holds the NEAR; keep it (the owner can still download the key).
+  return { accountId, privateKey, txs: { createAccount: createTx }, depositError: lastError };
+}
+
+/** Keep a little NEAR on the agent account for its own storage. */
+const WITHDRAW_RESERVE_YOCTO = nearToYocto('0.01');
+
+/**
+ * Cash out a hosted agent: take its whole vault balance out (vault → agent account), then, if
+ * `to` is given, send everything above a small reserve to that account.
+ */
+export async function withdrawWallet(
+  cfg: HostedConfig,
+  accountId: string,
+  privateKey: string,
+  to: string | null
+): Promise<{ withdrawnYocto: string; sentYocto: string; txs: { withdraw?: string; transfer?: string } }> {
+  if (!cfg.near) throw new WalletError(400, 'NotOnChain: this server keeps chips off-chain');
+  const ops = (chainOpsOverride ?? nearChainOps)(cfg);
+  if (!ops.vaultBalanceYocto || !ops.vaultWithdraw || !ops.availableYocto || !ops.transfer) throw new WalletError(503, 'WithdrawUnavailable');
+  const key = privateKey as KeyPairString;
+  if (to && !(await ops.accountExists(to))) throw new WalletError(400, 'UnknownAccount: that NEAR account does not exist on testnet');
+
+  const txs: { withdraw?: string; transfer?: string } = {};
+  const inVault = await ops.vaultBalanceYocto(accountId);
+  if (inVault > 0n) txs.withdraw = await ops.vaultWithdraw(accountId, key, inVault);
+
+  let sent = 0n;
+  if (to) {
+    // The vault pays out in a follow-up receipt; give it a moment to land.
+    let available = 0n;
+    for (let i = 0; i < 6; i++) {
+      available = await ops.availableYocto(accountId);
+      if (inVault === 0n || available >= inVault) break;
+      if (!chainOpsOverride) await new Promise((r) => setTimeout(r, 1500));
+    }
+    const send = available - WITHDRAW_RESERVE_YOCTO;
+    if (send > 0n) {
+      txs.transfer = await ops.transfer(accountId, key, to, send);
+      sent = send;
+    }
+  }
+  return { withdrawnYocto: inVault.toString(), sentYocto: sent.toString(), txs };
 }

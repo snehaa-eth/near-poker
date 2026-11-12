@@ -26,7 +26,9 @@ import { EquityBadge, RollingNumber } from './table-fx';
 import { ArrowUpRight, Check, ShieldCheck } from 'lucide-react';
 
 /** How long an agent's table talk stays on screen. */
-const SPEECH_MS = 5000;
+const SPEECH_MS = 2600;
+/** After the move tag (in + hold + out ≈ 1.65 s). */
+const SPEECH_DELAY_MS = 1700;
 /** Action tag: 150 ms in, 1.2 s hold, 300 ms out (DESIGN-SYSTEM §6). */
 const TAG_IN_S = 0.15;
 const TAG_HOLD_MS = 1200;
@@ -50,14 +52,22 @@ function truncateMiddle(value: string, head = 6, tail = 4) {
 }
 
 /** Shows the bot's latest line for a few seconds whenever it changes. */
-function useSpeech(line?: string) {
+/**
+ * Table talk bubble. It waits for the move tag to finish (one element per seat at a time),
+ * shows briefly, then fades. `key` changes on every new line, so a repeated line still shows.
+ */
+function useSpeech(line: string | undefined, key: string | number | undefined) {
   const [visible, setVisible] = useState<string | null>(null);
   useEffect(() => {
     if (!line) return;
-    setVisible(line);
-    const t = setTimeout(() => setVisible(null), SPEECH_MS);
-    return () => clearTimeout(t);
-  }, [line]);
+    const show = window.setTimeout(() => setVisible(line), SPEECH_DELAY_MS);
+    const hide = window.setTimeout(() => setVisible(null), SPEECH_DELAY_MS + SPEECH_MS);
+    return () => {
+      window.clearTimeout(show);
+      window.clearTimeout(hide);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
   return visible;
 }
 
@@ -276,7 +286,8 @@ export const PlayerSeat = ({
   const reduce = useReducedMotion();
   const cards = player.folded ? [] : player.holeCards;
   const urgent = turnSecondsLeft != null && turnSecondsLeft <= 5;
-  const speech = useSpeech(player.bot?.lastLine);
+  const talkLine = player.agent?.lastLine ?? player.bot?.lastLine;
+  const speech = useSpeech(talkLine, player.agent?.lastLineAt ?? talkLine);
   const [tag, setTag] = useState<SeatActionFlash | null>(null);
   const hover = useHoverOpen();
   const tagLabel = positionLabel ?? blind;
@@ -382,6 +393,19 @@ export const PlayerSeat = ({
       )}
     >
     <AnimatePresence>
+      {!tag && !equity && speech ? (
+        <motion.div
+          key={`talk-${speech}`}
+          initial={reduce ? { opacity: 0 } : { opacity: 0, y: 3 }}
+          animate={{ opacity: 1, y: 0, transition: { duration: 0.2 } }}
+          exit={{ opacity: 0, transition: { duration: 0.3 } }}
+          role='status'
+          aria-label={`${player.nickname} says: ${speech}`}
+          className='line-clamp-2 w-max max-w-[12rem] rounded-sm bg-surface-2/95 px-2.5 py-1 text-[13px] italic leading-snug text-fg-muted shadow-[0_6px_20px_rgba(0,0,0,0.45)] ring-1 ring-border'
+        >
+          “{speech}”
+        </motion.div>
+      ) : null}
       {tag && !equity ? (
         <motion.div
           key={tag.id}
@@ -532,14 +556,6 @@ export const PlayerSeat = ({
       )}
       style={style}
     >
-      {speech ? (
-        <div
-          role='status'
-          className='pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-max max-w-[13rem] -translate-x-1/2 rounded-sm bg-surface-2 px-3 py-1.5 text-center text-[13px] leading-snug text-fg shadow-[var(--shadow-e2)] ring-1 ring-border-strong'
-        >
-          {speech}
-        </div>
-      ) : null}
       {holeCards}
       <div className='relative flex flex-col items-center'>
         {seatPill}

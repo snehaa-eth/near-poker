@@ -8,6 +8,7 @@
  *    the TEE receipt (checks 1–6), then applies the move via the normal engine path.
  *  - Timeout → auto-check when legal, else auto-fold.
  */
+import { addTalk, lineFromResponse } from './talk.js';
 import { randomBytes } from 'node:crypto';
 
 import type { Socket } from 'socket.io';
@@ -243,6 +244,16 @@ export async function handleAct(socket: Pick<Socket, 'emit' | 'data'>, payload: 
       });
     } catch (e) {
       console.error('[arena] failed to store move', errMsg(e));
+    }
+    const line = lineFromResponse(receipt.responseBody);
+    if (line) {
+      addTalk(gameId, {
+        playerId,
+        nickname: state?.players.find((x) => x.id === playerId)?.nickname ?? '',
+        line,
+        at: Date.now(),
+        handId,
+      });
     }
     (socket.emit as (ev: string, p: unknown) => boolean)('arena:accepted', {
       gameId,

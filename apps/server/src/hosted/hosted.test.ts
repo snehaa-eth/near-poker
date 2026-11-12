@@ -16,7 +16,7 @@ import { personaText } from './personas.js';
 import { RateLimiter } from './rate-limit.js';
 import { redact } from './runner.js';
 import { clientIp, validateName } from './routes.js';
-import { WalletError, createWallet, setChainOps, type ChainOps } from './wallet.js';
+import { WalletError, createWallet, setChainOps, withdrawWallet, type ChainOps } from './wallet.js';
 import type { HostedAgentDoc } from '../db.js';
 
 const KEY = Buffer.alloc(32, 7);
@@ -212,6 +212,50 @@ describe('near-mode wallet (stubbed chain: no RPC, no transactions)', () => {
     const w = await createWallet(cfg(), 'flaky');
     assert.equal(w.txs.createAccount, 'TX1');
     assert.match(w.depositError ?? '', /rpc down/);
+  });
+
+  it('retries the vault deposit when the new account is not visible yet', async () => {
+    let tries = 0;
+    setChainOps(() => ({
+      accountExists: async () => false,
+      funderAvailableYocto: async () => 10n ** 25n,
+      createSubAccount: async () => 'TX1',
+      deposit: async () => {
+        tries += 1;
+        if (tries < 3) throw new Error('access key not found');
+        return 'TXDEP';
+      },
+    }));
+    const w = await createWallet(cfg(), 'eager');
+    assert.equal(tries, 3);
+    assert.deepEqual(w.txs, { createAccount: 'TX1', deposit: 'TXDEP' });
+    assert.equal(w.depositError, undefined);
+  });
+
+  it('withdraws the whole vault balance and sends all but a reserve to the owner', async () => {
+    const calls: string[] = [];
+    const NEAR = 10n ** 24n;
+    let available = NEAR / 20n; // 0.05 NEAR left on the account
+    setChainOps(() => ({
+      accountExists: async (id) => (calls.push(`exists ${id}`), true),
+      funderAvailableYocto: async () => NEAR,
+      createSubAccount: async () => assert.fail('no create'),
+      deposit: async () => assert.fail('no deposit'),
+      vaultBalanceYocto: async () => NEAR / 10n,
+      vaultWithdraw: async (id, _k, y) => ((available += y), calls.push(`withdraw ${id} ${y}`), 'TXW'),
+      availableYocto: async () => available,
+      transfer: async (id, _k, to, y) => (calls.push(`transfer ${id} ${to} ${y}`), 'TXT'),
+    }));
+    const r = await withdrawWallet(cfg(), 'sharky.root.testnet', 'ed25519:x', 'me.testnet');
+    assert.equal(r.withdrawnYocto, (NEAR / 10n).toString());
+    assert.equal(r.sentYocto, (NEAR / 10n + NEAR / 20n - NEAR / 100n).toString()); // keeps 0.01
+    assert.deepEqual(r.txs, { withdraw: 'TXW', transfer: 'TXT' });
+    assert.deepEqual(calls.map((c) => c.split(' ')[0]), ['exists', 'withdraw', 'transfer']);
+    await assert.rejects(
+      (setChainOps(() => ({ accountExists: async () => false, funderAvailableYocto: async () => 0n, createSubAccount: async () => undefined, deposit: async () => undefined, vaultBalanceYocto: async () => 0n, vaultWithdraw: async () => undefined, availableYocto: async () => 0n, transfer: async () => undefined })),
+      withdrawWallet(cfg(), 'sharky.root.testnet', 'ed25519:x', 'ghost.testnet')),
+      (e: WalletError) => e.status === 400 && /UnknownAccount/.test(e.message)
+    );
   });
 });
 

@@ -380,6 +380,9 @@ export type PublicAgentInfo = {
   model: string;
   movesVerified: number;
   lastReceiptUrl?: string;
+  /** Table talk from its latest accepted move (only while fresh; drives the speech bubble). */
+  lastLine?: string;
+  lastLineAt?: number;
 };
 
 export type NlhePublicView = Omit<PublicGameView, 'players'> & {

@@ -8,6 +8,7 @@
  * seat tags and the ticker use, so counts always match. TEE receipts are joined onto those rows
  * per player, in order (each accepted agent decision = one receipt).
  */
+import { lineOf } from '~/lib/last-hand';
 import Link from 'next/link';
 
 import React, { useEffect, useMemo, useRef } from 'react';
@@ -40,6 +41,8 @@ export type MoveRow = {
   /** Model of the seat (arena agents). */
   model?: string;
   receipt?: ArenaMoveRecord;
+  /** Table talk from the signed reply, if any. */
+  line?: string;
 };
 
 const STREETS = ['preflop', 'flop', 'turn', 'river'] as const;
@@ -94,6 +97,7 @@ export function useHandMoves(
         phrase: actionPhrase(a),
         model: p?.agent?.model ?? receipt?.model,
         receipt,
+        line: receipt ? lineOf(receipt) : undefined,
       };
     });
   }, [view.actions, view.players, receipts, handId]);
@@ -201,11 +205,18 @@ export function MoveLog({
                     <span className='w-6 shrink-0 text-right text-[13px] tabular-nums text-fg-subtle'>
                       {r.index + 1}
                     </span>
-                    <span className='min-w-0 flex-1 truncate'>
-                      <span className='font-semibold text-fg'>{r.nickname}</span>{' '}
-                      <span className={r.type === 'all-in' ? 'text-accent' : r.type === 'fold' ? 'text-fg-subtle' : 'text-fg-muted'}>
-                        {r.phrase}
+                    <span className='min-w-0 flex-1 py-1'>
+                      <span className='block truncate'>
+                        <span className='font-semibold text-fg'>{r.nickname}</span>{' '}
+                        <span className={r.type === 'all-in' ? 'text-accent' : r.type === 'fold' ? 'text-fg-subtle' : 'text-fg-muted'}>
+                          {r.phrase}
+                        </span>
                       </span>
+                      {r.line ? (
+                        <span className='block truncate text-[13px] italic text-fg-subtle' title={r.line}>
+                          “{r.line}”
+                        </span>
+                      ) : null}
                     </span>
                     <ProofCheck row={r} onOpen={onProof} />
                   </li>

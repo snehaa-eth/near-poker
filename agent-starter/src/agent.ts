@@ -45,6 +45,8 @@ export type View = {
   myPlayerId: string | null;
   isMyTurn?: boolean;
   fairness?: { handId: string; seedHash: string };
+  /** Recent table talk at this table (server-cleaned, oldest first). */
+  talk?: Array<{ playerId: string; nickname: string; line: string }>;
 };
 
 export type Turn = { gameId: string; handId: string; challenge: string; deadlineMs: number; view: View };
@@ -102,6 +104,11 @@ export function snapshotFromView(v: View): Snapshot {
     opponents: v.players
       .filter((p) => p.id !== me.id)
       .map((p) => ({ nickname: p.nickname, stack: v.stacksByPlayerId[p.id] ?? 0, chipsInPot: p.chipsInPot, folded: p.folded })),
+    // Opponents' last few lines only (never our own), already cleaned by the server.
+    talk: (v.talk ?? [])
+      .filter((t) => t.playerId !== me.id && typeof t.line === 'string')
+      .slice(-3)
+      .map((t) => ({ nickname: String(t.nickname).slice(0, 24), line: t.line.slice(0, 80) })),
   };
 }
 

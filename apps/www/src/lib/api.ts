@@ -57,6 +57,9 @@ export type AgentInfo = {
   movesVerified: number;
   /** NEAR AI Verification Center link for the agent's latest accepted move. */
   lastReceiptUrl?: string;
+  /** Table talk from its latest move (only while fresh). */
+  lastLine?: string;
+  lastLineAt?: number;
 };
 
 /** GET /arena/tables (INTERFACES §5.4). `seats` may be a count or a seat list. */
@@ -639,6 +642,11 @@ export const hostedApi = {
       body: '{}',
       headers: ownerHeaders(token),
     }),
+  withdraw: (id: string, token: string, to: string) =>
+    request<{ withdrawnYocto: string; sentYocto: string; txs: { withdraw?: string; transfer?: string } }>(
+      `/hosted-agents/${encodeURIComponent(id)}/withdraw`,
+      { method: 'POST', body: JSON.stringify({ to }), headers: ownerHeaders(token) }
+    ),
   stop: (id: string, token: string, force = false) =>
     request<{ stopping: boolean }>(
       `/hosted-agents/${encodeURIComponent(id)}/stop`,
@@ -647,7 +655,10 @@ export const hostedApi = {
   update: (
     id: string,
     token: string,
-    patch: Partial<Pick<HostedCreateInput, 'persona' | 'customPrompt' | 'model' | 'nearAiKey' | 'maxCalls' | 'eventId'>>
+    patch: Partial<Pick<HostedCreateInput, 'persona' | 'customPrompt' | 'model' | 'nearAiKey' | 'maxCalls'>> & {
+      /** null leaves the event. */
+      eventId?: string | null;
+    }
   ) =>
     request<HostedAgentOwner>(`/hosted-agents/${encodeURIComponent(id)}`, {
       method: 'PATCH',

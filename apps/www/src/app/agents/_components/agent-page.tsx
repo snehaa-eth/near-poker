@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import {
+  type ArenaEventOption,
   type HostedAgentOwner,
   type HostedAgentPublic,
   type HostedConfig,
@@ -302,6 +303,8 @@ function OwnerPanel({
         ) : null}
       </Card>
 
+      {!deleted ? <EventJoin owner={owner} token={token} busy={busy} running={running} act={act} /> : null}
+
       {editing ? (
         <Card className='mt-4'>
           <p className='font-semibold'>Edit playing style</p>
@@ -374,14 +377,7 @@ function OwnerPanel({
       </section>
 
       <div className='mt-8 grid gap-4 sm:grid-cols-2'>
-        <Card className='p-4 sm:p-4'>
-          <p className='font-semibold'>Withdraw chips</p>
-          <p className='mt-1 text-caption text-fg-muted'>
-            Chips live in the table-vault contract under your agent’s wallet ({owner.walletAddress}). Download your agent,
-            then call <code className='rounded-xs bg-surface-3 px-1 font-mono text-[12px]'>withdraw({'{'}amount{'}'})</code> on the vault from that
-            account (not mid-hand). It’s testnet NEAR with no real-money value.
-          </p>
-        </Card>
+        <WithdrawCard owner={owner} token={token} busy={busy} running={running} act={act} />
         <Card className='p-4 sm:p-4'>
           <p className='font-semibold'>Delete agent</p>
           <p className='mt-1 text-caption text-fg-muted'>Stops it and removes its public profile. This link still lets you download the wallet.</p>
@@ -412,5 +408,151 @@ function OwnerPanel({
         </Card>
       </div>
     </>
+  );
+}
+
+/** Put an existing hosted agent into a scheduled event (or back into the open arena). */
+function EventJoin({
+  owner,
+  token,
+  busy,
+  running,
+  act,
+}: {
+  owner: HostedAgentOwner;
+  token: string;
+  busy: string | null;
+  running: boolean;
+  act: (name: string, fn: () => Promise<unknown>, okMsg?: string) => Promise<void>;
+}) {
+  const [events, setEvents] = useState<ArenaEventOption[] | null>(null);
+  const [choice, setChoice] = useState<string>(owner.eventId ?? '');
+  useEffect(() => {
+    hostedApi.events().then((list) => {
+      const now = Date.now();
+      // Only events that haven't finished yet (the current one stays listed while live).
+      setEvents((list ?? []).filter((e) => !e.startsAt || Date.parse(e.startsAt) > now - 3 * 3600_000));
+    });
+  }, []);
+  useEffect(() => setChoice(owner.eventId ?? ''), [owner.eventId]);
+  if (!events || (events.length === 0 && !owner.eventId)) return null;
+  const current = events.find((e) => e.id === owner.eventId);
+  const changed = choice !== (owner.eventId ?? '');
+
+  async function save() {
+    await hostedApi.update(owner.agentId, token, { eventId: choice || null });
+    // The event is read when the agent starts, so restart it: leave now, then play again.
+    if (running) {
+      await hostedApi.stop(owner.agentId, token, true);
+      for (let i = 0; i < 20; i++) {
+        await new Promise((r) => setTimeout(r, 750));
+        const v = (await hostedApi.get(owner.agentId, token)) as HostedAgentOwner;
+        if (v.state !== 'playing' && v.state !== 'queued') break;
+      }
+    }
+    await hostedApi.play(owner.agentId, token);
+  }
+
+  return (
+    <Card className='mt-4 p-4 sm:p-4'>
+      <p className='font-semibold'>Events</p>
+      <p className='mt-1 text-caption text-fg-muted'>
+        {current
+          ? `Registered for ${current.name}. It waits (no AI calls) until the start, then takes its seat.`
+          : 'Enter a scheduled event. Your agent registers, waits for the start without using AI calls, and is seated automatically.'}
+      </p>
+      <div className='mt-3 flex flex-wrap items-center gap-2'>
+        <select
+          aria-label='Event'
+          className={cn(inputClass, 'h-11 w-auto min-w-[16rem]')}
+          value={choice}
+          onChange={(e) => setChoice(e.target.value)}
+        >
+          <option value=''>Open arena (no event)</option>
+          {events.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.name}
+              {e.startsAt ? ` · ${new Date(e.startsAt).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}
+            </option>
+          ))}
+        </select>
+        <Button
+          disabled={busy !== null || !changed}
+          onClick={() =>
+            void act(
+              'event',
+              save,
+              choice ? 'Registered. Your agent is waiting for the event to start.' : 'Back in the open arena.'
+            )
+          }
+        >
+          {busy === 'event' ? <Loader2 className='animate-spin' aria-hidden /> : null}
+          {choice || !owner.eventId ? 'Register for this event' : 'Leave the event'}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+/** Cash out: whole vault balance → agent wallet → the owner's NEAR testnet account. */
+function WithdrawCard({
+  owner,
+  token,
+  busy,
+  running,
+  act,
+}: {
+  owner: HostedAgentOwner;
+  token: string;
+  busy: string | null;
+  running: boolean;
+  act: (name: string, fn: () => Promise<unknown>, okMsg?: string) => Promise<void>;
+}) {
+  const [to, setTo] = useState('');
+  const [result, setResult] = useState<string | null>(null);
+  const valid = /^[a-z0-9_.-]{2,64}$/.test(to.trim().toLowerCase()) && to.trim().toLowerCase() !== owner.walletAddress;
+  const deleted = owner.state === 'deleted';
+  return (
+    <Card className='p-4 sm:p-4'>
+      <p className='font-semibold'>Withdraw chips</p>
+      <p className='mt-1 text-caption text-fg-muted'>
+        Takes all {owner.chips} chips out of the vault and sends the test NEAR to your own NEAR testnet account
+        (1 chip = 0.001 NEAR, a tiny reserve stays on {owner.walletAddress}). No real-money value.
+      </p>
+      {running ? (
+        <p className='mt-3 text-caption text-fg-subtle'>Stop the agent first; chips can’t leave mid-hand.</p>
+      ) : (
+        <div className='mt-3 flex flex-wrap gap-2'>
+          <input
+            aria-label='Your NEAR testnet account'
+            placeholder='you.testnet'
+            className={cn(inputClass, 'h-11 min-w-0 flex-1')}
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            autoCapitalize='none'
+            spellCheck={false}
+          />
+          <Button
+            variant='secondary'
+            disabled={busy !== null || deleted || !valid}
+            onClick={() =>
+              void act('withdraw', async () => {
+                const r = await hostedApi.withdraw(owner.agentId, token, to.trim().toLowerCase());
+                const near = (Number(BigInt(r.sentYocto) / 10n ** 18n) / 1e6).toFixed(3);
+                setResult(r.txs.transfer ? `Sent ${near} test NEAR to ${to.trim().toLowerCase()}.` : 'Nothing to send.');
+              })
+            }
+          >
+            {busy === 'withdraw' ? <Loader2 className='animate-spin' aria-hidden /> : null}
+            Withdraw all
+          </Button>
+        </div>
+      )}
+      {result ? (
+        <p role='status' className='mt-2 text-caption text-fg-muted'>
+          {result}
+        </p>
+      ) : null}
+    </Card>
   );
 }

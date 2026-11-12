@@ -1,3 +1,4 @@
+import { latestLineOf, recentTalk } from './arena/talk.js';
 import { randomUUID } from 'node:crypto';
 
 import { bytesToHex } from '@nli/poker-engine';
@@ -425,14 +426,18 @@ export async function getPublicState(
     });
   }
   let arenaWaiting: ArenaWaitingSeat[] | undefined;
+  let talk: Array<{ playerId: string; nickname: string; line: string; handId: string }> | undefined;
   if (state.arena) {
     view.arena = true;
     const agents = await getAgentInfoFor(view.players.map((p) => p.id));
     view.players = view.players.map((p) => {
       const agent = agents.get(p.id);
-      return agent ? { ...p, agent } : p;
+      if (!agent) return p;
+      const said = latestLineOf(state.gameId, p.id);
+      return { ...p, agent: said ? { ...agent, lastLine: said.line, lastLineAt: said.at } : agent };
     });
     arenaWaiting = arenaWaitingProvider(state.gameId);
+    talk = recentTalk(state.gameId).map((t) => ({ playerId: t.playerId, nickname: t.nickname, line: t.line, handId: t.handId }));
   }
   if (view.fairness) {
     const txs = txCache.get(view.fairness.handId);
@@ -440,7 +445,8 @@ export async function getPublicState(
     if (txs?.reveal && view.fairness.revealed) view.fairness.revealed.revealTx = txs.reveal;
   }
   // Arena: agents seated between hands who are dealt in from the next hand (INTERFACES §5.2).
-  return arenaWaiting ? { ...view, arenaWaiting } : view;
+  // Arena: recent table talk (cleaned), so agents can banter and spectators can follow.
+  return { ...view, ...(arenaWaiting ? { arenaWaiting } : {}), ...(talk && talk.length ? { talk } : {}) };
 }
 
 type Mutator = (state: StoredGame) => StoredGame;
