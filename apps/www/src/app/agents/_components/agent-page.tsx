@@ -12,6 +12,7 @@ import {
   type HostedConfig,
   hostedApi,
 } from '~/lib/api';
+import { explorerTxUrl } from '~/lib/near/rpc';
 import { cn } from '~/lib/utils';
 
 import { AgentAvatar } from '~/components/agent-avatar';
@@ -512,6 +513,7 @@ function WithdrawCard({
 }) {
   const [to, setTo] = useState('');
   const [result, setResult] = useState<string | null>(null);
+  const [txs, setTxs] = useState<{ withdraw?: string; transfer?: string } | null>(null);
   const valid = /^[a-z0-9_.-]{2,64}$/.test(to.trim().toLowerCase()) && to.trim().toLowerCase() !== owner.walletAddress;
   const deleted = owner.state === 'deleted';
   return (
@@ -544,6 +546,7 @@ function WithdrawCard({
                 const r = await hostedApi.withdraw(owner.agentId, token, to.trim().toLowerCase());
                 const near = (Number(BigInt(r.sentYocto) / 10n ** 18n) / 1e6).toFixed(3);
                 setResult(r.txs.transfer ? `Sent ${near} test NEAR to ${to.trim().toLowerCase()}.` : 'Nothing to send.');
+                setTxs(r.txs.withdraw || r.txs.transfer ? r.txs : null);
               })
             }
           >
@@ -553,9 +556,33 @@ function WithdrawCard({
         </div>
       )}
       {result ? (
-        <p role='status' className='mt-2 text-caption text-fg-muted'>
-          {result}
-        </p>
+        <div role='status' className='mt-3 space-y-1.5'>
+          <p className='text-caption text-fg-muted'>{result}</p>
+          {txs?.withdraw ? (
+            <a
+              href={explorerTxUrl(txs.withdraw)}
+              target='_blank'
+              rel='noopener noreferrer'
+              className='link inline-flex items-center gap-1 text-caption font-semibold'
+            >
+              Vault withdraw on explorer
+              <ArrowUpRight className='size-3.5' aria-hidden />
+              <span className='sr-only'>(opens NEAR explorer)</span>
+            </a>
+          ) : null}
+          {txs?.transfer ? (
+            <a
+              href={explorerTxUrl(txs.transfer)}
+              target='_blank'
+              rel='noopener noreferrer'
+              className='link inline-flex items-center gap-1 text-caption font-semibold'
+            >
+              Transfer on explorer
+              <ArrowUpRight className='size-3.5' aria-hidden />
+              <span className='sr-only'>(opens NEAR explorer)</span>
+            </a>
+          ) : null}
+        </div>
       ) : null}
     </Card>
   );
