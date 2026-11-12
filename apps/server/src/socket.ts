@@ -98,9 +98,10 @@ export function createSocketServer(httpServer: HttpServer, origin: string | stri
     try {
       const raw = socket.request.headers.cookie ?? '';
       const cookies = parseCookie(raw);
-      // `nli_session` is accepted as an alias (INTERFACES §5.1 agent clients).
-      const sessionId = cookies[SESSION_COOKIE] ?? cookies[SESSION_COOKIE_ALIAS];
-      const session = await getSession(sessionId);
+      // `nli_session` is accepted as an alias (INTERFACES §5.1 agent clients). The cookie holds
+      // the secret session token; a public player id (sessionId) does not authenticate.
+      const token = cookies[SESSION_COOKIE] ?? cookies[SESSION_COOKIE_ALIAS];
+      const session = await getSession(token);
       if (!session) {
         // Spectator: may watch rooms (sees no hole cards until showdown), cannot act.
         socket.data.sessionId = undefined;

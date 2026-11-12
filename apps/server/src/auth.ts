@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+
+import type { Response } from 'express';
 
 import { syncChipsFromChain } from './chips.js';
 import { PlayerActivityModel, SessionModel } from './db.js';
@@ -82,9 +84,43 @@ const skipAccessKeyCheck: AccessKeyChecker = async () => true;
 
 const AVATAR_RE = /^\/png\/[a-z0-9_]+\.png$/i;
 
-export async function getSession(sessionId: string | undefined) {
-  if (!sessionId) return null;
-  return SessionModel.findOne({ sessionId }).lean();
+/** Max live session tokens per session (several devices / agent restarts); oldest dropped first. */
+const MAX_SESSION_TOKENS = 10;
+
+/** sha256 hex of a session token — the only form stored server-side. */
+export function hashSessionToken(token: string) {
+  return createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
+/**
+ * Mint a new secret session token for `sessionId` (32 random bytes, base64url) and store only
+ * its sha256 hash. The token — never the public `sessionId` / player id — is what goes in the
+ * session cookie.
+ */
+export async function issueSessionToken(sessionId: string): Promise<string> {
+  const token = randomBytes(32).toString('base64url');
+  await SessionModel.updateOne(
+    { sessionId },
+    { $push: { tokenHashes: { $each: [hashSessionToken(token)], $slice: -MAX_SESSION_TOKENS } } }
+  );
+  return token;
+}
+
+/**
+ * Resolve the session cookie value (a secret token) to its session. A bare `sessionId` (the
+ * public player id) does NOT authenticate.
+ */
+export async function getSession(token: string | undefined) {
+  if (!token || typeof token !== 'string' || token.length > 256) return null;
+  return SessionModel.findOne({ tokenHashes: hashSessionToken(token) }).lean();
+}
+
+/** Issue a fresh token for `sessionId` and set it as the session cookie (and optionally the alias). */
+export async function setSessionCookie(res: Response, sessionId: string, opts: { alias?: boolean } = {}) {
+  const token = await issueSessionToken(sessionId);
+  res.cookie(SESSION_COOKIE, token, sessionCookieOptions());
+  if (opts.alias) res.cookie(SESSION_COOKIE_ALIAS, token, sessionCookieOptions());
+  return token;
 }
 
 function sessionCookieOptions() {
@@ -149,9 +185,9 @@ authRouter.post('/nickname', async (req, res) => {
     return;
   }
 
-  const existingId = req.cookies?.[SESSION_COOKIE] as string | undefined;
-  let session = existingId
-    ? await SessionModel.findOne({ sessionId: existingId })
+  const existing = await getSession(req.cookies?.[SESSION_COOKIE] as string | undefined);
+  let session = existing
+    ? await SessionModel.findOne({ sessionId: existing.sessionId })
     : null;
 
   if (session) {
@@ -164,7 +200,7 @@ authRouter.post('/nickname', async (req, res) => {
       nickname,
       chips: 0,
     });
-    res.cookie(SESSION_COOKIE, sessionId, sessionCookieOptions());
+    await setSessionCookie(res, sessionId);
   }
 
   res.json(toSessionJson(session));
@@ -233,10 +269,10 @@ authRouter.post('/profile', async (req, res) => {
     avatarUpdate = parsed.value;
   }
 
-  const cookieId = req.cookies?.[SESSION_COOKIE] as string | undefined;
+  const cookieSession = await getSession(req.cookies?.[SESSION_COOKIE] as string | undefined);
   const byWallet = await SessionModel.findOne({ walletAddress });
-  const byCookie = cookieId
-    ? await SessionModel.findOne({ sessionId: cookieId })
+  const byCookie = cookieSession
+    ? await SessionModel.findOne({ sessionId: cookieSession.sessionId })
     : null;
 
   let session = byWallet;
@@ -277,8 +313,7 @@ authRouter.post('/profile', async (req, res) => {
     }
   }
 
-  res.cookie(SESSION_COOKIE, session.sessionId, sessionCookieOptions());
-  res.cookie(SESSION_COOKIE_ALIAS, session.sessionId, sessionCookieOptions());
+  await setSessionCookie(res, session.sessionId, { alias: true });
   res.json(toSessionJson(session));
 });
 

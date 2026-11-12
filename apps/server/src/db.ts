@@ -3,7 +3,13 @@ import type { GameState } from 'game-engine';
 
 const sessionSchema = new Schema(
   {
+    /** Public player id (shown in table views, hand records…). NOT a credential. */
     sessionId: { type: String, required: true, unique: true, index: true },
+    /**
+     * sha256(hex) of the secret session tokens carried in the session cookie (most recent last,
+     * capped — see auth.ts issueSessionToken). Never selected by default; never sent to clients.
+     */
+    tokenHashes: { type: [String], default: [], index: true, select: false },
     /** NEAR account id — profile + chips keyed to this when set. */
     walletAddress: {
       type: String,

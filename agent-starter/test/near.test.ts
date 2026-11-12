@@ -96,7 +96,7 @@ describe('login against a mock game server', () => {
           res.writeHead(401, { 'content-type': 'application/json' });
           return res.end('{"error":"InvalidNearProof"}');
         }
-        res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': 'nli_session=sess-123; Path=/; HttpOnly' });
+        res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': 'nli_session=tok-opaque-secret; Path=/; HttpOnly' });
         return res.end(JSON.stringify({ sessionId: 'sess-123', walletAddress: p.accountId, nickname: 'my-agent', chips: 250 }));
       }
       res.writeHead(404).end('{}');
@@ -110,8 +110,8 @@ describe('login against a mock game server', () => {
     const http = new GameHttp(base);
     const s = await login(http, ACCOUNT, KEY);
     assert.equal(s.walletAddress, ACCOUNT);
-    assert.equal(http.jar.get('nli_session'), 'sess-123');
-    assert.match(http.cookieHeader(), /nli_session=sess-123/);
+    assert.equal(http.jar.get('nli_session'), 'tok-opaque-secret', 'cookie is the opaque session token, not the public sessionId');
+    assert.match(http.cookieHeader(), /nli_session=tok-opaque-secret/);
   });
 });
 

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { SESSION_COOKIE, getSession, toSessionJson } from './auth.js';
+import { SESSION_COOKIE, getSession, setSessionCookie, toSessionJson } from './auth.js';
 import { upsertBotSession } from './bots.js';
 import { syncChipsFromChain } from './chips.js';
 import { isNearChain } from './near.js';
@@ -189,11 +189,7 @@ adminRouter.post('/bot-session', requireAdmin, async (req, res) => {
         chainError = e instanceof Error ? e.message : String(e);
       }
     }
-    res.cookie(SESSION_COOKIE, doc.sessionId, {
-      httpOnly: true,
-      sameSite: 'lax',
-      maxAge: 1000 * 60 * 60 * 24 * 30,
-    });
+    await setSessionCookie(res, doc.sessionId);
     res.json({ ...toSessionJson(doc), bot: true, ...(chainError ? { chainError } : {}) });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
