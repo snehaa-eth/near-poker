@@ -1,0 +1,21 @@
+# Dark Table game server (apps/server) — for Northflank / any Docker host.
+# Build context = repository root:  docker build -f Dockerfile.server -t dark-table-server .
+FROM node:22-slim
+
+WORKDIR /app
+# The lockfile is pnpm v9 (package.json's packageManager field is older), so install pnpm 9 explicitly.
+RUN npm install -g pnpm@9.15.0
+
+# Install only what the server needs (server + the two engine packages it imports).
+COPY . .
+RUN pnpm install --frozen-lockfile --filter "server..." \
+ && pnpm --filter @nli/poker-engine --filter game-engine build
+
+# Hosted agents run the agent-starter as child processes.
+RUN cd agent-starter && npm ci
+
+ENV PORT=4000
+EXPOSE 4000
+WORKDIR /app/apps/server
+# Secrets and settings come from environment variables (see DEPLOY.md) — never baked into the image.
+CMD ["npx", "tsx", "src/index.ts"]

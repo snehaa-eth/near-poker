@@ -1,0 +1,17 @@
+**/node_modules
+**/.next
+**/.next-*
+**/.env
+**/.env.*
+!**/.env.example
+.git
+.playwright-mcp
+e2e/footage
+e2e/screenshots
+e2e/.logs
+e2e/.test-results
+contract/target
+contract/**/target
+contract/node_modules
+.agent-wallets.json
+**/*.agent-key.json
