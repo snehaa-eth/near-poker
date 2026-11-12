@@ -5,151 +5,147 @@ import React from 'react';
 import { api } from '~/lib/api';
 import { accountUrl, mockArenaLeaderboard, shortModel } from '~/lib/arena';
 import { formatTokens } from '~/lib/format';
-import { cn, errorHandler } from '~/lib/utils';
+import { cn } from '~/lib/utils';
 
 import { useQuery } from '@tanstack/react-query';
 
-import { Bot, ExternalLink } from 'lucide-react';
+import { AgentAvatar } from '~/components/agent-avatar';
+import { RankBadge, VerifiedPill } from '~/components/ui/badge';
+import { Card } from '~/components/ui/card';
+import { DataTable, TD, TH, THead, TR } from '~/components/ui/data-table';
+import { SkeletonRows } from '~/components/ui/skeleton';
+import { EmptyState, ErrorState } from '~/components/ui/states';
 
+import { Bot } from 'lucide-react';
+
+/** @deprecated per-seat TEE chips are gone; use <VerifiedPill compact />. */
 export function TeeChip({ className }: { className?: string }) {
-  return (
-    <span
-      className={cn(
-        'inline-flex shrink-0 items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-[1px] text-[10px] font-semibold text-emerald-800 ring-1 ring-emerald-200',
-        className
-      )}
-    >
-      🔒 TEE
-    </span>
-  );
-}
-
-function rankStyle(rank: number) {
-  if (rank === 1) return 'bg-[#F5C542] text-neutral-950';
-  if (rank === 2) return 'bg-neutral-200 text-neutral-800';
-  if (rank === 3) return 'bg-[#D4A574] text-white';
-  return 'bg-neutral-100 text-neutral-600';
+  return <VerifiedPill compact className={className} />;
 }
 
 export function useArenaLeaderboard(mock = false) {
   return useQuery({
     queryKey: ['arena-leaderboard', mock],
-    queryFn: () =>
-      mock ? Promise.resolve(mockArenaLeaderboard()) : api.arenaLeaderboard(),
+    queryFn: () => (mock ? Promise.resolve(mockArenaLeaderboard()) : api.arenaLeaderboard()),
     refetchInterval: 10_000,
     retry: false,
   });
 }
 
-export const AgentLeaderboard = ({ mock = false }: { mock?: boolean }) => {
-  const { data, isLoading, isError, error } = useArenaLeaderboard(mock);
-  const entries = [...(data ?? [])].sort(
-    (a, b) => b.netChips - a.netChips || b.hands - a.hands
+function Net({ v }: { v: number }) {
+  return (
+    <span className={cn('font-semibold tabular-nums', v > 0 ? 'text-positive' : v < 0 ? 'text-negative' : 'text-fg-muted')}>
+      {v > 0 ? '+' : v < 0 ? '−' : ''}
+      {formatTokens(Math.abs(v))}
+    </span>
   );
+}
+
+export const AgentLeaderboard = ({ mock = false, limit }: { mock?: boolean; limit?: number }) => {
+  const { data, isLoading, isError, refetch, isFetching } = useArenaLeaderboard(mock);
+  const all = [...(data ?? [])].sort((a, b) => b.netChips - a.netChips || b.hands - a.hands);
+  const entries = limit ? all.slice(0, limit) : all;
 
   if (isLoading) {
-    return <p className='text-sm text-neutral-500'>Loading agents…</p>;
+    return (
+      <Card className='p-0 sm:p-0'>
+        <SkeletonRows rows={limit ?? 5} />
+      </Card>
+    );
   }
   if (isError) {
     return (
-      <p className='rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'>
-        Could not load the agent leaderboard: {errorHandler(error)}
-      </p>
+      <ErrorState
+        title='Leaderboard unavailable'
+        onRetry={() => void refetch()}
+        retrying={isFetching}
+      >
+        We can’t reach the arena server right now.
+      </ErrorState>
     );
   }
   if (entries.length === 0) {
     return (
-      <div className='rounded-[1.5rem] border border-dashed border-neutral-300 bg-white/60 px-5 py-10 text-center'>
-        <Bot className='mx-auto h-8 w-8 text-neutral-400' />
-        <p className='mt-3 text-sm font-medium text-neutral-900'>
-          No agents ranked yet
-        </p>
-        <p className='mt-1 text-sm text-neutral-500'>
-          Agents show up here once they play a hand in the arena.
-        </p>
-      </div>
+      <EmptyState icon={<Bot />} title='No agents ranked yet'>
+        Agents show up here after they play their first hand.
+      </EmptyState>
     );
   }
 
   return (
-    <div className='overflow-hidden rounded-2xl border border-neutral-200 bg-white'>
-      <div className='overflow-x-auto'>
-        <table className='w-full min-w-[40rem] border-collapse text-left text-sm'>
-          <thead>
-            <tr className='bg-neutral-50/80 text-[11px] font-semibold uppercase tracking-wide text-neutral-400'>
-              <th className='px-4 py-3 font-semibold'>#</th>
-              <th className='px-4 py-3 font-semibold'>Agent</th>
-              <th className='px-4 py-3 font-semibold'>Model</th>
-              <th className='px-4 py-3 text-right font-semibold'>Hands</th>
-              <th className='px-4 py-3 text-right font-semibold'>Net chips</th>
-              <th className='px-4 py-3 text-right font-semibold'>
-                Moves verified
-              </th>
+    <Card className='overflow-hidden p-0 sm:p-0'>
+      <div className='hidden sm:block'>
+        <DataTable>
+          <THead>
+            <tr>
+              <TH className='w-12'>#</TH>
+              <TH>Agent</TH>
+              <TH className='hidden md:table-cell'>Model</TH>
+              <TH numeric>Hands</TH>
+              <TH numeric>Net chips</TH>
+              <TH numeric>
+                <span title='Moves with a valid TEE receipt from NEAR AI Cloud'>Verified moves</span>
+              </TH>
             </tr>
-          </thead>
+          </THead>
           <tbody>
             {entries.map((e, i) => (
-              <tr
-                key={e.walletAddress}
-                className='border-t border-neutral-100 transition hover:bg-neutral-50/80'
-              >
-                <td className='px-4 py-3'>
-                  <span
-                    className={cn(
-                      'flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold',
-                      rankStyle(i + 1)
-                    )}
-                  >
-                    {i + 1}
-                  </span>
-                </td>
-                <td className='max-w-[14rem] px-4 py-3'>
-                  <p className='truncate font-semibold text-neutral-950'>
-                    {e.nickname || e.walletAddress}
-                  </p>
-                  <a
-                    href={accountUrl(e.walletAddress)}
-                    target='_blank'
-                    rel='noopener noreferrer'
-                    className='inline-flex max-w-full items-center gap-1 font-mono text-[11px] text-neutral-500 hover:text-[#1D9BF0]'
-                  >
-                    <span className='truncate'>{e.walletAddress}</span>
-                    <ExternalLink className='h-3 w-3 shrink-0' />
-                  </a>
-                </td>
-                <td
-                  className='px-4 py-3 font-mono text-xs text-neutral-700'
-                  title={e.model}
-                >
+              <TR key={e.walletAddress} interactive>
+                <TD>
+                  <RankBadge rank={i + 1} />
+                </TD>
+                <TD>
+                  <div className='flex items-center gap-3'>
+                    <AgentAvatar name={e.nickname || e.walletAddress} size={32} />
+                    <div className='min-w-0'>
+                      <p className='truncate font-semibold'>{e.nickname || e.walletAddress}</p>
+                      <a
+                        href={accountUrl(e.walletAddress)}
+                        target='_blank'
+                        rel='noopener noreferrer'
+                        className='block max-w-[26ch] truncate font-mono text-[12px] text-fg-subtle hover:text-accent'
+                        title='View account on NEAR explorer'
+                      >
+                        {e.walletAddress}
+                      </a>
+                    </div>
+                  </div>
+                </TD>
+                <TD className='hidden font-mono text-[12px] text-fg-muted md:table-cell' title={e.model}>
                   {e.model ? shortModel(e.model, 24) : '—'}
-                </td>
-                <td className='px-4 py-3 text-right tabular-nums text-neutral-700'>
+                </TD>
+                <TD numeric className='text-fg-muted'>
                   {formatTokens(e.hands)}
-                </td>
-                <td
-                  className={cn(
-                    'px-4 py-3 text-right font-semibold tabular-nums',
-                    e.netChips > 0
-                      ? 'text-emerald-600'
-                      : e.netChips < 0
-                        ? 'text-red-600'
-                        : 'text-neutral-600'
-                  )}
-                >
-                  {e.netChips > 0 ? '+' : e.netChips < 0 ? '−' : ''}
-                  {formatTokens(Math.abs(e.netChips))}
-                </td>
-                <td className='px-4 py-3 text-right'>
-                  <span className='inline-flex items-center gap-1.5 tabular-nums text-neutral-700'>
+                </TD>
+                <TD numeric>
+                  <Net v={e.netChips} />
+                </TD>
+                <TD numeric className='text-fg-muted'>
+                  <span className='inline-flex items-center gap-2'>
                     {formatTokens(e.movesVerified)}
-                    <TeeChip />
+                    <VerifiedPill compact />
                   </span>
-                </td>
-              </tr>
+                </TD>
+              </TR>
             ))}
           </tbody>
-        </table>
+        </DataTable>
       </div>
-    </div>
+      <ul className='divide-y divide-border sm:hidden'>
+        {entries.map((e, i) => (
+          <li key={e.walletAddress} className='flex min-h-14 items-center gap-3 px-4 py-3'>
+            <RankBadge rank={i + 1} />
+            <AgentAvatar name={e.nickname || e.walletAddress} size={32} />
+            <div className='min-w-0 flex-1'>
+              <p className='truncate font-semibold'>{e.nickname || e.walletAddress}</p>
+              <p className='truncate text-caption text-fg-subtle'>
+                {formatTokens(e.hands)} hands · {formatTokens(e.movesVerified)} verified moves
+              </p>
+            </div>
+            <Net v={e.netChips} />
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 };

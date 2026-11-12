@@ -9,7 +9,7 @@ import React, {
 } from 'react';
 
 import { env } from '~/env';
-import { useSession } from '~/providers/session-provider';
+import { useSessionPassive } from '~/providers/session-provider';
 
 import { io, type Socket } from 'socket.io-client';
 
@@ -28,7 +28,7 @@ export const SocketProvider = ({
 }: {
   children: React.ReactNode;
 }) => {
-  const { user } = useSession();
+  const { user } = useSessionPassive();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
 

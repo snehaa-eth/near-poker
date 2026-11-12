@@ -21,7 +21,7 @@ export function accountUrl(accountId: string) {
     : `https://testnet.nearblocks.io/address/${accountId}`;
 }
 
-/** "deepseek-ai/DeepSeek-V3.1" → "DeepSeek-V3.1", clipped for chips. */
+/** "Qwen/Qwen3.6-35B-A3B-FP8" → "Qwen3.6-35B-A3B-FP8", clipped for chips. */
 export function shortModel(model: string, max = 18) {
   const tail = model.split('/').pop() || model;
   return tail.length > max ? `${tail.slice(0, max - 1)}…` : tail;
@@ -76,26 +76,29 @@ const hex = (seed: number, bytes: number) =>
     ((seed * 31 + i * 17) % 256).toString(16).padStart(2, '0')
   ).join('');
 
-const MOCK_AGENTS = [
+/** Every mock agent uses a NEAR AI Cloud confidential (TEE) model, like the real arena. */
+export const TEE_MODEL = 'Qwen/Qwen3.6-35B-A3B-FP8';
+
+export const MOCK_AGENTS = [
   {
     walletAddress: 'shark-agent.testnet',
     nickname: 'Shark',
-    model: 'deepseek-ai/DeepSeek-V3.1',
+    model: TEE_MODEL,
   },
   {
-    walletAddress: 'qwen-grinder.testnet',
+    walletAddress: 'grinder-agent.testnet',
     nickname: 'Grinder',
-    model: 'Qwen/Qwen3-30B-A3B-Instruct-2507',
+    model: TEE_MODEL,
   },
   {
-    walletAddress: 'gpt-oss-bluff.testnet',
+    walletAddress: 'bluff-agent.testnet',
     nickname: 'Bluffington',
-    model: 'openai/gpt-oss-120b',
+    model: TEE_MODEL,
   },
   {
-    walletAddress: 'glm-nit.testnet',
+    walletAddress: 'nit-agent.testnet',
     nickname: 'Nit',
-    model: 'zai-org/GLM-4.6',
+    model: TEE_MODEL,
   },
   {
     walletAddress: 'fox-agent.testnet',
@@ -267,7 +270,7 @@ export function mockArenaView(gameId: string): PublicGameView {
   });
   return {
     gameId,
-    name: 'Arena #4591',
+    name: 'Arena #1',
     joinCode: '',
     minChips: 100,
     maxPlayers: 6,

@@ -43,9 +43,11 @@ test.afterAll(async () => {
 test('beginner hints render on a (mock) arena table', async ({ page }) => {
   await page.goto('/game/demo?mock=1');
   await expect(page.getByText('Flop · 3 shared cards')).toBeVisible();
+  // "How to watch" lives in the table drawer (Log tab).
+  await page.getByRole('button', { name: 'Open table drawer' }).click();
   await page.getByRole('button', { name: 'How to watch' }).click();
-  await expect(page.getByText('🔒 TEE = the model really decided.')).toBeVisible();
-  await expect(page.getByText('✅ Verify hand = nobody rigged the deck.')).toBeVisible();
+  await expect(page.getByText('TEE = the model really decided.')).toBeVisible();
+  await expect(page.getByText('Verify hand = nobody rigged the deck.')).toBeVisible();
   await expect(page.getByText('How a hand ends.')).toBeVisible();
   await shot(page, '00-how-to-watch');
 });
@@ -67,25 +69,24 @@ test('watch three TEE agents, verify a hand, see the leaderboard, table closes',
   await card.click();
   await expect(page).toHaveURL(new RegExp(tableHref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 
-  // 2. Three seats, each with a 🔒 TEE chip (appears once the agent has a verified move).
-  const tee = page.getByRole('button', { name: 'TEE agent details' });
+  // 2. Three seats, each announced as a TEE agent (once the agent has a verified move).
+  const tee = page.getByRole('button', { name: /TEE agent, \d+ moves verified/ });
   await expect(tee).toHaveCount(3, { timeout: 45_000 });
-  for (const t of await tee.all()) await expect(t).toContainText('🔒 TEE');
   for (const n of NICKS) await expect(page.getByText(n, { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: 'How to watch' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open table drawer' })).toBeVisible();
   await shot(page, '02-table-live');
 
   // 3. A hand ends: plain-English end state, winner seat, "Next hand starting…", Verify link.
   await expect(page.getByText(/^Hand over · (won before the flop|everyone else folded|showdown)$/)).toBeVisible({
     timeout: 45_000,
   });
-  const verify = page.getByRole('link', { name: /Verify hand/ });
+  const verify = page.getByRole('link', { name: /Verify hand/ }).first();
   await expect(verify).toBeVisible();
   const verifyHref = (await verify.getAttribute('href'))!;
   expect(verifyHref).toMatch(/^\/verify\//);
   await expect(page.getByText('Next hand starting…').first()).toBeVisible();
   // The mock model always checks/calls, so hands reach showdown and the winner's hand is named.
-  await expect(page.getByText(/^🏆 Winner · .+/).first()).toBeVisible();
+  await expect(page.getByText(/^Winner · .+/).first()).toBeVisible();
   await shot(page, '03-hand-over');
 
   // 4. Verify page: every fairness check passes, and the agent moves carry TEE receipts.

@@ -13,9 +13,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { PublicAction, PublicGameView } from './api';
-import { formatTokens } from './format';
 import { cardLabel, computeEquity, equityAllowed } from './poker-eval';
-import type { SeatActionFlash } from './seat-action-flash';
+import { chipText, type SeatActionFlash } from './seat-action-flash';
 import { hydrateSoundMute, playSound, playSoundLater } from './sounds';
 
 export type ChipFlight = { playerId: string; amount: number };
@@ -74,7 +73,7 @@ function betsOf(v: PublicGameView): Record<string, number> {
 }
 
 export function actionPhrase(a: Pick<PublicAction, 'type' | 'amount'>): string {
-  const amt = a.amount != null ? formatTokens(a.amount) : '';
+  const amt = a.amount != null ? chipText(a.amount) : '';
   switch (a.type) {
     case 'fold':
       return 'folds';
@@ -250,8 +249,8 @@ export function useTableDirector(
 
       if (newHand) {
         const parts: string[] = [];
-        if (next.sbPlayerId && next.smallBlind) parts.push(`${nick(next, next.sbPlayerId)} posts SB ${formatTokens(next.smallBlind)}`);
-        if (next.bbPlayerId && next.bigBlind) parts.push(`${nick(next, next.bbPlayerId)} posts BB ${formatTokens(next.bigBlind)}`);
+        if (next.sbPlayerId && next.smallBlind) parts.push(`${nick(next, next.sbPlayerId)} posts SB ${chipText(next.smallBlind)}`);
+        if (next.bbPlayerId && next.bigBlind) parts.push(`${nick(next, next.bbPlayerId)} posts BB ${chipText(next.bigBlind)}`);
         ticker.push({ id: key(), kind: 'hand', text: parts.length ? `New hand · ${parts.join(' · ')}` : 'New hand' });
         sfx('shuffle', 0.35);
         sfx('cardDeal', 0.7, 250);
@@ -268,7 +267,7 @@ export function useTableDirector(
           : [];
       acts.forEach((a, i) => {
         const delay = i * 220;
-        flashes[a.playerId] = { id: key(), action: a.type, amount: a.amount ?? null };
+        flashes[a.playerId] = { id: key(), action: a.type, amount: a.amount ?? null, actionIndex: next.actions ? prevActs + i : undefined };
         ticker.push({ id: key(), kind: 'action', who: nick(next, a.playerId), text: actionPhrase(a), action: a.type });
         const own = me != null && a.playerId === me;
         if (a.type === 'all-in') {
@@ -319,7 +318,10 @@ export function useTableDirector(
         sfx('cardDeal', 0.7, 450);
       }
 
-      const potBefore = Math.max(prev.pot, next.pot, sweepItems.reduce((s, x) => s + x.amount, 0));
+      // At hand end the payouts are the true pot (the closing call never shows up in an in-hand
+      // view), so the staged run-out shows the same number the winner is paid.
+      const paid = (next.winners ?? []).reduce((s, w) => s + w.amount, 0);
+      const potBefore = Math.max(prev.pot, next.pot, paid, sweepItems.reduce((s, x) => s + x.amount, 0));
 
       if (ended) {
         const winners = sumWinners(next, potBefore);
@@ -332,7 +334,7 @@ export function useTableDirector(
               id: key(),
               kind: 'win',
               who: nick(next, w.playerId),
-              text: `wins ${formatTokens(w.amount)}${hand ? ` with ${hand}` : ''}`,
+              text: `wins ${chipText(w.amount)}${hand ? ` with ${hand}` : ''}`,
             };
           });
 

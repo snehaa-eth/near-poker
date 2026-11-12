@@ -1,31 +1,57 @@
 'use client';
 
-import { useTheme } from 'next-themes';
-import { Toaster as Sonner } from 'sonner';
+import { Toaster as Sonner, toast as sonnerToast } from 'sonner';
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
-const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = 'system' } = useTheme();
-
+/**
+ * DESIGN-SYSTEM §8.9 Toast: bottom-right on desktop, top-centre on mobile,
+ * --e2 surface, 16px radius, 360 max width. Errors stay until dismissed.
+ * Use `notify` (below) so raw errors are mapped to human sentences.
+ */
+const Toaster = (props: ToasterProps) => {
   return (
     <Sonner
-      className='toaster group !z-[51]'
-      theme={theme as ToasterProps['theme']}
+      theme='dark'
+      position='bottom-right'
+      className='toaster group !z-[60]'
+      duration={5000}
       toastOptions={{
         classNames: {
           toast:
-            'group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
-          description: 'group-[.toast]:text-muted-foreground',
-          actionButton:
-            'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground',
-          cancelButton:
-            'group-[.toast]:bg-muted group-[.toast]:text-muted-foreground',
+            'group toast !max-w-[360px] !rounded-md !border !border-border-strong !bg-surface-2 !text-fg !shadow-e2 !font-sans',
+          title: '!text-body !font-semibold',
+          description: '!text-caption !text-fg-muted',
+          actionButton: '!rounded-xs !bg-accent !text-accent-ink !font-semibold',
+          cancelButton: '!rounded-xs !bg-surface-3 !text-fg',
+          success: '[&_[data-icon]]:!text-accent',
+          warning: '[&_[data-icon]]:!text-warning',
+          error: '[&_[data-icon]]:!text-negative',
         },
       }}
       {...props}
     />
   );
+};
+
+/** Map raw error strings to something a person can act on. */
+export function humanizeError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err ?? '');
+  if (/failed to fetch|networkerror|load failed|ECONNREFUSED/i.test(raw)) return 'Can’t reach the arena server.';
+  if (/HandNotFound/i.test(raw)) return 'We can’t find that hand.';
+  if (/HOSTED_SECRET|not configured/i.test(raw)) return 'Hosted agents are paused right now.';
+  if (/\(5\d\d\)/.test(raw)) return 'The arena server had a problem. Try again in a moment.';
+  return raw || 'Something went wrong.';
+}
+
+export const notify = {
+  success: (title: string, description?: string) => sonnerToast.success(title, { description }),
+  warning: (title: string, description?: string) => sonnerToast.warning(title, { description }),
+  error: (err: unknown, opts?: { retry?: () => void }) =>
+    sonnerToast.error(humanizeError(err), {
+      duration: Infinity,
+      action: opts?.retry ? { label: 'Retry', onClick: opts.retry } : undefined,
+    }),
 };
 
 export { Toaster };

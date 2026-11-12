@@ -12,6 +12,7 @@ import { useSocket } from '~/providers/socket-provider';
 
 import { ArenaSpectator } from '~/components/arena/arena-spectator';
 import { GameOverlay } from '~/components/overlays';
+import { OrbitLoader } from '~/components/ui/orbit-loader';
 
 import { ChooseCards } from './_components/choose-cards';
 import { DeclareResult } from './_components/declare-result';
@@ -82,25 +83,17 @@ const GamePage = ({
 
   if (!view) {
     return (
-      <div className='flex h-screen items-center justify-center bg-[#FAFAFA] text-neutral-500'>
-        Loading table…
+      <div className='flex min-h-[100dvh] items-center justify-center bg-bg px-4 pt-[var(--nav-h)]'>
+        <h1 className='sr-only'>Loading table</h1>
+        <OrbitLoader size={220} caption='Finding your table' />
       </div>
     );
   }
 
-  if (view.arena) {
-    return (
-      <div className='relative'>
-        <ArenaSpectator gameId={gameId} view={view} mock={mock} />
-        {view.gameEnded && view.players.length > 0 ? (
-          <Results
-            players={view.players}
-            winnerId={view.winnerId}
-            winningHand={view.winningHand}
-          />
-        ) : null}
-      </div>
-    );
+  // Arena tables, and any table the visitor isn't seated at, are watched — never the
+  // human lobby's "Waiting / Start Game" modal.
+  if (view.arena || !seated) {
+    return <ArenaSpectator gameId={gameId} view={view} mock={mock} />;
   }
 
   return (
@@ -122,8 +115,9 @@ const GamePage = ({
         />
       ) : null}
 
-      <div className='pointer-events-none absolute left-4 top-20 z-30 max-w-[70vw] text-xs text-neutral-500'>
-        <p className='truncate font-medium text-neutral-700'>
+      <h1 className='sr-only'>Table {view.name || gameId}</h1>
+      <div className='pointer-events-none absolute left-4 top-20 z-30 max-w-[70vw] text-[13px] text-fg-subtle'>
+        <p className='truncate font-medium text-fg-muted'>
           {view.name || 'Table'}
         </p>
         <p className='mt-0.5 font-mono'>

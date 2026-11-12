@@ -22,6 +22,8 @@ type ProfileInput = {
 };
 
 type SessionContextValue = {
+  /** Starts the /auth/me probe the first time a consumer needs it. */
+  ensure: () => void;
   user: SessionUser | null;
   loading: boolean;
   refresh: () => Promise<void>;
@@ -50,7 +52,12 @@ export const SessionProvider = ({
     }
   }, []);
 
-  useEffect(() => {
+  // Spectator pages never need a session, so we only probe /auth/me when a
+  // component actually asks for it (avoids a 401 on every page view).
+  const started = React.useRef(false);
+  const ensure = useCallback(() => {
+    if (started.current) return;
+    started.current = true;
     void refresh();
   }, [refresh]);
 
@@ -72,8 +79,8 @@ export const SessionProvider = ({
   }, []);
 
   const value = useMemo(
-    () => ({ user, loading, refresh, setNickname, upsertProfile }),
-    [user, loading, refresh, setNickname, upsertProfile]
+    () => ({ ensure, user, loading, refresh, setNickname, upsertProfile }),
+    [ensure, user, loading, refresh, setNickname, upsertProfile]
   );
 
   return (
@@ -82,6 +89,17 @@ export const SessionProvider = ({
 };
 
 export const useSession = () => {
+  const ctx = useContext(SessionContext);
+  if (!ctx) throw new Error('useSession must be used within SessionProvider');
+  const { ensure } = ctx;
+  useEffect(() => {
+    ensure();
+  }, [ensure]);
+  return ctx;
+};
+
+/** Read the session without triggering the /auth/me probe. */
+export const useSessionPassive = () => {
   const ctx = useContext(SessionContext);
   if (!ctx) throw new Error('useSession must be used within SessionProvider');
   return ctx;

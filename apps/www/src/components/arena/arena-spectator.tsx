@@ -2,49 +2,43 @@
 
 import Link from 'next/link';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { ArenaMoveRecord, PublicGameView } from '~/lib/api';
-import { formatTokens } from '~/lib/format';
-import type { SeatActionFlash } from '~/lib/seat-action-flash';
-import { playSound, preloadSounds } from '~/lib/sounds';
+import type { PublicGameView } from '~/lib/api';
+import { preloadSounds } from '~/lib/sounds';
+import { useTableDirector } from '~/lib/table-director';
 import { cn } from '~/lib/utils';
 
-import { HowToWatch } from '~/app/game/[id]/_components/table-guide';
 import { SleekTable } from '~/app/game/[id]/_components/sleek-table';
+import {
+  DRAWER_ID,
+  type DrawerTab,
+  HandsPanel,
+  type SessionHand,
+  StandingsPanel,
+  TableDrawer,
+} from '~/app/game/[id]/_components/table-drawer';
+import { ActionTicker, SoundButton } from '~/app/game/[id]/_components/table-fx';
+import { HowToWatch } from '~/app/game/[id]/_components/table-guide';
 
-import { ChipAmount } from '~/components/currency-amount';
-import { EnterAgentButton } from '~/components/enter-agent-modal';
-import { SoundToggle } from '~/components/sound-toggle';
+import { MoveLog, ProofList, useHandMoves } from './arena-move-feed';
 
-import { ArenaMoveFeed } from './arena-move-feed';
-import { ArenaSidebar } from './arena-sidebar';
+import { ArrowLeft, ChevronRight, PanelRight, ShieldCheck } from 'lucide-react';
 
-import { ArrowLeft, ShieldCheck } from 'lucide-react';
+/** How long the mint "Verify hand" chip stays in the pot area before moving to the ticker. */
+const VERIFY_CHIP_MS = 5000;
 
-function HudChip({
-  children,
-  tone = 'default',
-}: {
-  children: React.ReactNode;
-  tone?: 'default' | 'live' | 'pot' | 'street';
-}) {
-  return (
-    <span
-      className={cn(
-        'inline-flex h-7 items-center rounded-md px-2 text-[11px] font-bold uppercase tracking-wide',
-        tone === 'live' && 'bg-emerald-600 text-white',
-        tone === 'pot' && 'bg-neutral-950 text-white',
-        tone === 'street' && 'bg-amber-100 text-amber-900',
-        tone === 'default' && 'bg-neutral-100 text-neutral-700'
-      )}
-    >
-      {children}
-    </span>
-  );
+/** Same formula as the server's `blindsForLobby` (fallback for older views). */
+function blindsOf(view: PublicGameView) {
+  if (view.smallBlind && view.bigBlind) return { sb: view.smallBlind, bb: view.bigBlind };
+  const bb = Math.max(2, Math.floor(Math.max(view.minChips || 0, 20) / 10));
+  return { sb: Math.max(1, Math.floor(bb / 2)), bb };
 }
 
-/** Arena watch layout: table + move feed + standings / recent hands. */
+/**
+ * Spectator page for a table (arena tables, and any table the visitor isn't seated at):
+ * one slim header, the table centre-stage, a one-line ticker, and one drawer for the rest.
+ */
 export function ArenaSpectator({
   gameId,
   view,
@@ -54,130 +48,189 @@ export function ArenaSpectator({
   view: PublicGameView;
   mock?: boolean;
 }) {
-  const handId = view.fairness?.handId ?? null;
-  const street =
-    view.gameEnded || view.round === 'End'
-      ? view.communityCards.filter((c) => c >= 0).length >= 5
-        ? 'Showdown'
-        : 'Hand over'
-      : view.roundLabel || view.street || view.round || '—';
+  const director = useTableDirector(view, { sound: true });
+  const dv = director.view;
+  const name = dv.name || view.name || 'Table';
+  const { sb, bb } = blindsOf(view);
+  const handId = dv.fairness?.handId ?? null;
+  const verifyHref = useCallback(
+    (id: string) => `/verify/${encodeURIComponent(id)}${mock ? '?mock=1' : ''}`,
+    [mock]
+  );
 
-  const [actionFlashes, setActionFlashes] = useState<
-    Record<string, SeatActionFlash>
-  >({});
+  /* ---------------- drawer ---------------- */
+  const [drawer, setDrawer] = useState<{ open: boolean; tab: DrawerTab; focus: number | null }>({
+    open: false,
+    tab: 'log',
+    focus: null,
+  });
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const openDrawer = useCallback((tab: DrawerTab, focus: number | null = null) => {
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      returnFocusRef.current = document.activeElement;
+    }
+    setDrawer({ open: true, tab, focus });
+  }, []);
+  const closeDrawer = useCallback(() => {
+    setDrawer((d) => ({ ...d, open: false, focus: null }));
+    window.setTimeout(() => returnFocusRef.current?.focus?.({ preventScroll: true }), 0);
+  }, []);
+  const onProof = useCallback((index: number) => openDrawer('proofs', index), [openDrawer]);
 
-  const onArenaMove = useCallback((move: ArenaMoveRecord) => {
-    // Prefer nickname match when playerId from the feed is a wallet / session id.
-    const byId = move.playerId;
-    const byNick = move.nickname
-      ? view.players.find(
-          (p) => p.nickname.toLowerCase() === move.nickname!.toLowerCase()
-        )?.id
-      : null;
-    const seatId = byNick || byId;
-    if (!seatId) return;
-    setActionFlashes((cur) => ({
-      ...cur,
-      [seatId]: {
-        id: `${move.completionId}-${move.action}`,
-        action: move.action,
-        amount: move.amount,
-      },
-    }));
-  }, [view.players]);
+  const rows = useHandMoves(dv, { mock, enabled: drawer.open });
 
-  // Mock tables: unlock / warm the audio graph on first click so Pepper SFX play.
+  /* ---------------- hand end: verify chip for 5 s, then the ticker ---------------- */
+  const [settledHand, setSettledHand] = useState<string | null>(null);
+  const [chipVisible, setChipVisible] = useState(false);
+  const [sessionHands, setSessionHands] = useState<SessionHand[]>([]);
+  const ended = Boolean(dv.gameEnded);
+  const winnerName = ended ? dv.winnerNickname ?? undefined : undefined;
+  const wonAmount = ended ? (dv.winners ?? []).reduce((s, w) => s + w.amount, 0) : undefined;
   useEffect(() => {
-    if (!mock) return;
+    if (!handId) return;
+    setSessionHands((list) => {
+      const rest = list.filter((h) => h.handId !== handId);
+      return [{ handId, complete: ended, winner: winnerName, amount: wonAmount }, ...rest].slice(0, 20);
+    });
+  }, [handId, ended, winnerName, wonAmount]);
+  useEffect(() => {
+    if (!handId || !ended) return;
+    setSettledHand(handId);
+    setChipVisible(true);
+    const t = window.setTimeout(() => setChipVisible(false), VERIFY_CHIP_MS);
+    return () => window.clearTimeout(t);
+  }, [handId, ended]);
+
+  useEffect(() => {
     preloadSounds();
-    const unlock = () => {
-      playSound('cardFlip', 0.01);
-      window.removeEventListener('pointerdown', unlock);
-    };
-    window.addEventListener('pointerdown', unlock, { once: true });
-    return () => window.removeEventListener('pointerdown', unlock);
-  }, [mock]);
+  }, []);
+
+  const playing = dv.status === 'playing' || Boolean(dv.gameEnded);
+  const tickerVerify =
+    settledHand && !(chipVisible && dv.gameEnded && handId === settledHand) ? (
+      <Link
+        href={verifyHref(settledHand)}
+        className='relative inline-flex h-9 items-center gap-1 rounded-xs px-1 text-[13px] font-semibold text-accent after:absolute after:-inset-y-1 after:inset-x-0 after:content-[""] hover:underline'
+      >
+        <ShieldCheck className='h-4 w-4' strokeWidth={1.75} />
+        <span className='hidden sm:inline'>Verify hand</span>
+        <span className='sm:hidden'>Verify</span>
+        <ChevronRight className='h-4 w-4' />
+      </Link>
+    ) : null;
+
+  const drawerBody =
+    drawer.tab === 'log' ? (
+      <div className='flex flex-col gap-4'>
+        <MoveLog view={dv} rows={rows} onProof={onProof} />
+        <HowToWatch />
+      </div>
+    ) : drawer.tab === 'proofs' ? (
+      <ProofList
+        view={dv}
+        rows={rows}
+        focusIndex={drawer.focus}
+        verifyHref={handId ? verifyHref(handId) : undefined}
+      />
+    ) : drawer.tab === 'hands' ? (
+      <HandsPanel
+        gameId={gameId}
+        mock={mock}
+        currentHandId={handId}
+        sessionHands={sessionHands}
+        verifyHref={verifyHref}
+      />
+    ) : (
+      <StandingsPanel mock={mock} seated={dv.players.map((p) => p.nickname)} />
+    );
+
+  const iconBtn =
+    'inline-flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-sm px-2 text-fg-muted transition-colors duration-instant hover:bg-surface-2 hover:text-fg';
 
   return (
-    <div className='min-h-[100dvh] bg-[#F4F5F7] pt-16'>
-      <div className='mx-auto grid max-w-[90rem] gap-4 px-3 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start xl:grid-cols-[minmax(0,1fr)_22rem]'>
-        <div className='flex min-w-0 flex-col gap-3'>
-          <div className='flex flex-wrap items-center gap-2'>
+    <div className='flex min-h-[100dvh] flex-col bg-bg pt-[var(--nav-h)] text-fg'>
+      <h1 className='sr-only'>Table {name}</h1>
+
+      {/* One slim header */}
+      <div className='sticky top-[var(--nav-h)] z-30 border-b border-border bg-bg/90 backdrop-blur'>
+        <div className='flex h-11 items-center gap-1 px-2 sm:px-6'>
+          <nav aria-label='Table' className='flex min-w-0 items-center gap-1.5 text-[13px]'>
             <Link
               href={mock ? '/arena?mock=1' : '/arena'}
-              className='inline-flex h-7 items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50'
+              className={cn(iconBtn, 'shrink-0')}
+              aria-label='Back to the arena'
             >
-              <ArrowLeft className='h-3.5 w-3.5' />
-              Arena
+              <ArrowLeft className='h-4 w-4' strokeWidth={1.75} />
+              <span className='hidden sm:inline'>Arena</span>
             </Link>
-            <HudChip tone='live'>
-              {view.status === 'playing' && !view.gameEnded ? 'Live' : 'Watch'}
-            </HudChip>
-            <HudChip>Table {view.name || gameId.slice(0, 8)}</HudChip>
-            <HudChip tone='street'>{street}</HudChip>
-            <HudChip tone='pot'>Pot {formatTokens(view.pot)}</HudChip>
-            {view.minChips > 0 ? (
-              <span className='inline-flex h-7 items-center gap-1.5 rounded-md bg-neutral-100 px-2 text-[11px] font-bold text-neutral-700'>
-                Min
-                <ChipAmount
-                  value={view.minChips}
-                  size='sm'
-                  className='text-[11px] font-bold text-neutral-800'
-                  iconClassName='h-3.5 w-3.5'
-                />
-              </span>
-            ) : null}
-            {handId ? (
-              <span className='font-mono text-[11px] leading-7 text-neutral-500'>
-                hand {handId.slice(0, 10)}
-              </span>
-            ) : null}
-            <div className='ml-auto flex flex-wrap items-center gap-2'>
-              <SoundToggle className='h-7' />
-              <span className='inline-flex h-7 items-center gap-1 text-[11px] font-medium text-emerald-700'>
-                <ShieldCheck className='h-3.5 w-3.5' />
-                TEE moves only
-              </span>
-              <HowToWatch />
-              <EnterAgentButton
-                label='Enter an agent'
-                variant='mint'
-                className='h-7 px-3 text-xs'
-                pool={{
-                  name: view.name || 'Arena table',
-                  gameId,
-                  minChips: view.minChips || 100,
-                }}
-              />
-            </div>
+            <span aria-hidden className='hidden text-fg-disabled sm:inline'>·</span>
+            <span className='truncate font-semibold text-fg'>{name}</span>
+            <span aria-hidden className='text-fg-disabled'>·</span>
+            <span className='shrink-0 whitespace-nowrap tabular-nums text-fg-muted'>
+              NLH {sb}/{bb}
+            </span>
+          </nav>
+          <div className='ml-auto flex shrink-0 items-center'>
+            <button
+              type='button'
+              onClick={() => openDrawer('proofs')}
+              className={cn(iconBtn, 'text-[13px]')}
+              aria-label={`Provably fair${handId ? ` · hand ${handId}` : ''}. Open proofs`}
+            >
+              <ShieldCheck className='h-4 w-4 text-accent' strokeWidth={1.75} />
+              <span className='hidden md:inline'>Provably fair</span>
+              {handId ? (
+                <span className='hidden font-mono text-[12px] text-fg-subtle sm:inline'>
+                  #{handId.slice(0, 10)}
+                </span>
+              ) : null}
+            </button>
+            <SoundButton />
+            <button
+              type='button'
+              onClick={() => (drawer.open ? closeDrawer() : openDrawer(drawer.tab))}
+              className={cn(iconBtn, drawer.open && 'bg-surface-2 text-fg')}
+              aria-label={drawer.open ? 'Close table drawer' : 'Open table drawer'}
+              aria-expanded={drawer.open}
+              aria-controls={DRAWER_ID}
+            >
+              <PanelRight className='h-5 w-5' strokeWidth={1.75} />
+            </button>
           </div>
+        </div>
+      </div>
 
-          <div className='overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-950 shadow-[0_12px_40px_rgba(0,0,0,0.12)]'>
-            <SleekTable
-              gameId={gameId}
-              view={view}
-              embedded
-              showPositions
-              actionFlashes={actionFlashes}
-            />
-          </div>
-
-          <ArenaMoveFeed
-            handId={handId}
-            mock={mock}
-            nextPlayerNickname={view.nextPlayerNickname}
-            defaultOpen
-            onMove={onArenaMove}
-            silent
+      <section
+        aria-label={`Table ${name}`}
+        className={cn(
+          'flex flex-1 flex-col transition-[padding] duration-move ease-move',
+          drawer.open && 'sm:pr-[360px]'
+        )}
+      >
+        <div className='flex flex-1 items-center'>
+          <SleekTable
+            gameId={gameId}
+            view={view}
+            director={director}
+            embedded
+            showPositions
+            onProof={onProof}
+            verifyChip={chipVisible && handId === settledHand}
+            verifyHref={handId ? verifyHref(handId) : undefined}
+            seatNoun={view.arena ? 'agents' : 'players'}
           />
         </div>
+        <ActionTicker items={director.ticker} trailing={tickerVerify} live={playing} />
+      </section>
 
-        <ArenaSidebar
-          gameId={gameId}
-          currentHandId={handId}
-          mock={mock}
-        />
-      </div>
+      <TableDrawer
+        open={drawer.open}
+        tab={drawer.tab}
+        onTab={(tab) => setDrawer((d) => ({ ...d, tab, focus: tab === 'proofs' ? d.focus : null }))}
+        onClose={closeDrawer}
+      >
+        {drawerBody}
+      </TableDrawer>
     </div>
   );
 }

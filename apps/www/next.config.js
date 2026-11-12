@@ -28,6 +28,22 @@ const config = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   // Lint runs separately (`pnpm lint`); don't block production builds on style rules.
   eslint: { ignoreDuringBuilds: true },
+  // Agents play, people watch: legacy human-poker pages are gone. Operator
+  // pages (/admin, /dev) stay off in production unless ENABLE_OPERATOR_PAGES=1.
+  async redirects() {
+    const operatorOn =
+      process.env.NODE_ENV !== 'production' || process.env.ENABLE_OPERATOR_PAGES === '1';
+    return [
+      { source: '/game', destination: '/arena', permanent: false },
+      { source: '/profile', destination: '/agents', permanent: false },
+      ...(operatorOn
+        ? []
+        : [
+            { source: '/admin', destination: '/arena', permanent: false },
+            { source: '/dev/:path*', destination: '/arena', permanent: false },
+          ]),
+    ];
+  },
   webpack: (config, { isServer }) => {
     config.externals.push('pino-pretty', 'lokijs', 'encoding');
     config.resolve.fallback = { fs: false, path: false, util: false };

@@ -19,6 +19,15 @@ export function cardLabel(id: number): string {
   return `${r === 'T' ? '10' : r}${SUIT_CHARS[Math.floor(id / 13)] ?? ''}`;
 }
 
+const RANK_NAMES = ['Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Jack', 'Queen', 'King', 'Ace'];
+const SUIT_NAMES = ['spades', 'hearts', 'diamonds', 'clubs'];
+
+/** Screen-reader name, e.g. "King of spades". */
+export function cardName(id: number): string {
+  if (id < 0) return 'Face-down card';
+  return `${RANK_NAMES[id % 13] ?? '?'} of ${SUIT_NAMES[Math.floor(id / 13)] ?? '?'}`;
+}
+
 /** True for red suits (♥ ♦) — for coloured text labels. */
 export function isRedCard(id: number) {
   const s = Math.floor(id / 13);

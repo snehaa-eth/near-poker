@@ -5,16 +5,26 @@ import Link from 'next/link';
 import React from 'react';
 
 import { type ArenaEventDetail, type ArenaTable, api } from '~/lib/api';
-import { AGENTS_MD_URL, accountUrl, shortModel } from '~/lib/arena';
+import { AGENT_STARTER_URL, accountUrl, shortModel } from '~/lib/arena';
 import { cn, errorHandler } from '~/lib/utils';
 
 import { useQuery } from '@tanstack/react-query';
 
+import { AgentAvatar } from '~/components/agent-avatar';
+import { Chip, RankBadge, VerifiedPill } from '~/components/ui/badge';
+import { buttonVariants } from '~/components/ui/button';
+import { Card } from '~/components/ui/card';
+import { DataTable, TD, TH, THead, TR } from '~/components/ui/data-table';
+import { Skeleton } from '~/components/ui/skeleton';
+import { EmptyState, ErrorState, Page } from '~/components/ui/states';
+import { Term } from '~/components/ui/term';
+
 import { type MockState, mockEventDetail } from './mock';
 import { EventStatusPill, ShareButtons, localTime, splitDuration, useNow } from './shared';
 
-import { ArrowLeft, ArrowRight, Bot, Crown, Spade, Trophy } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bot, CalendarX, Crown, ShieldCheck, Trophy } from 'lucide-react';
 
+/** Countdown in Geist tabular numerals (never the display font). */
 function Countdown({ target, label }: { target: string; label: string }) {
   const now = useNow();
   const { d, h, m, s } = splitDuration(Date.parse(target) - now);
@@ -26,12 +36,14 @@ function Countdown({ target, label }: { target: string; label: string }) {
   ] as const;
   return (
     <div>
-      <p className='text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400'>{label}</p>
-      <div className='mt-2 flex gap-2 sm:gap-3'>
+      <p className='eyebrow'>{label}</p>
+      <div className='mt-2 flex gap-2' role='timer' aria-label={`${label} ${d} days ${h} hours ${m} minutes`}>
         {cells.map(([unit, v]) => (
-          <div key={unit} className='min-w-[4.25rem] rounded-xl bg-white/5 px-3 py-2 text-center ring-1 ring-white/10 sm:min-w-[5.5rem] sm:py-3'>
-            <p className='font-poker text-3xl tabular-nums tracking-wide text-white sm:text-5xl'>{String(v).padStart(2, '0')}</p>
-            <p className='mt-0.5 text-[10px] uppercase tracking-wide text-neutral-400'>{unit}</p>
+          <div key={unit} className='min-w-[68px] rounded-sm border border-border bg-surface-2 px-2 py-2 text-center sm:min-w-[84px]'>
+            <p className='text-[28px] font-semibold leading-8 tabular-nums tracking-[-0.02em] text-fg sm:text-countdown'>
+              {String(v).padStart(2, '0')}
+            </p>
+            <p className='mt-0.5 text-[12px] text-fg-subtle'>{unit}</p>
           </div>
         ))}
       </div>
@@ -41,88 +53,95 @@ function Countdown({ target, label }: { target: string; label: string }) {
 
 function Hero({ e }: { e: ArenaEventDetail }) {
   return (
-    <div className='rounded-3xl border border-neutral-900 bg-neutral-950 px-5 py-6 text-white sm:px-8 sm:py-8'>
-      <div className='flex flex-wrap items-center gap-2'>
+    <Card as='section' className='p-5 sm:p-8'>
+      <div className='flex flex-wrap items-center gap-x-3 gap-y-2'>
         <EventStatusPill status={e.status} />
-        <span className='text-xs text-neutral-400'>
+        <span className='text-caption text-fg-subtle'>
           {localTime(e.startsAt)} · {e.durationMin} min · up to {e.maxAgents} agents
         </span>
       </div>
-      <h1 className='mt-3 font-poker text-4xl tracking-wide sm:text-6xl'>{e.name}</h1>
-      {e.description ? <p className='mt-3 max-w-2xl text-sm text-neutral-300 sm:text-base'>{e.description}</p> : null}
+      <h1 className='mt-4 font-display text-h1-sm uppercase sm:text-h1'>{e.name}</h1>
+      {e.description ? <p className='mt-3 max-w-[64ch] text-lead text-fg-muted'>{e.description}</p> : null}
       {e.prize ? (
-        <p className='mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#F5C542]/15 px-3 py-1 text-sm font-medium text-[#F5C542] ring-1 ring-[#F5C542]/30'>
-          <Trophy className='h-4 w-4' /> {e.prize}
+        <p className='mt-4 inline-flex items-center gap-2 rounded-xs bg-warning/10 px-3 py-1.5 text-caption font-semibold text-warning'>
+          <Trophy className='size-4' aria-hidden /> {e.prize}
         </p>
       ) : null}
-      <div className='mt-6 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between'>
+      <div className='mt-8 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between'>
         {e.status === 'scheduled' ? (
           <Countdown target={e.startsAt} label='Starts in' />
         ) : e.status === 'live' ? (
           <Countdown target={e.endsAt} label='Ends in' />
         ) : (
           <div>
-            <p className='text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400'>Finished</p>
-            <p className='mt-1 text-lg text-neutral-200'>{localTime(e.endedAt ?? e.endsAt)}</p>
+            <p className='eyebrow'>Finished</p>
+            <p className='mt-1 text-lead text-fg'>{localTime(e.endedAt ?? e.endsAt)}</p>
           </div>
         )}
-        <ShareButtons event={e} dark />
+        <div className='flex flex-wrap items-center gap-2'>
+          {e.status === 'scheduled' ? (
+            <a href='#enter' className={buttonVariants({ variant: 'primary', size: 'md' })}>
+              Register my agent
+            </a>
+          ) : null}
+          <ShareButtons event={e} />
+        </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
 function HowToEnter({ e }: { e: ArenaEventDetail }) {
   const steps = [
     {
-      title: 'Create an agent',
+      title: 'Have an agent',
       body: (
         <>
-          <Link href='/agents/new' className='font-medium text-[#1D9BF0] hover:underline'>
+          <Link href='/agents/new' className='link font-semibold'>
             Create a hosted agent
           </Link>{' '}
-          or fork the{' '}
-          <a href={AGENTS_MD_URL} target='_blank' rel='noopener noreferrer' className='font-medium text-[#1D9BF0] hover:underline'>
-            agent starter
+          or run the{' '}
+          <a href={AGENT_STARTER_URL} target='_blank' rel='noopener noreferrer' className='link font-semibold'>
+            starter kit
           </a>{' '}
-          (NEAR testnet account + 100 chips in the vault + a NEAR AI Cloud TEE model).
+          (testnet account, 100 chips in the <Term t='vault'>vault</Term>, a NEAR AI <Term t='tee'>TEE</Term> model).
         </>
       ),
     },
-    e.status === 'live'
-      ? {
-          title: 'Registration closed',
-          body: 'Registration closes when the event starts. Unregistered agents can keep playing in the open arena.',
-        }
-      : {
+    {
       title: 'Register before the start',
       body: (
         <>
-          Run <code className='whitespace-nowrap rounded bg-neutral-100 px-1 py-0.5 font-mono text-[12px] text-neutral-900'>EVENT_ID={e.eventId} npm start</code>{' '}
-          in agent-starter, or use “Register for event” on your{' '}
-          <Link href='/agents' className='font-medium text-[#1D9BF0] hover:underline'>
-            hosted agent’s page
+          Pick this event under “Advanced” when you{' '}
+          <Link href='/agents/new' className='link font-semibold'>
+            create a hosted agent
           </Link>
+          , or run{' '}
+          <code className='whitespace-nowrap rounded-xs bg-surface-3 px-1 py-0.5 font-mono text-[12px] text-fg'>
+            EVENT_ID={e.eventId} npm start
+          </code>
           .
         </>
       ),
     },
     {
       title: 'Be online at the start',
-      body: 'Registered agents that are connected are seated at event tables automatically. Late? Join any time during the event and you sit down at the next free seat.',
+      body: 'Connected, registered agents are seated at event tables automatically. Late? Join during the event and take the next free seat.',
     },
   ];
   return (
-    <section className='rounded-2xl border border-neutral-200 bg-white p-5 sm:p-6'>
-      <h2 className='text-lg font-semibold text-neutral-950'>How to enter</h2>
-      <ol className='mt-4 grid gap-3 md:grid-cols-3'>
+    <section id='enter' aria-labelledby='enter-h' className='scroll-mt-24'>
+      <h2 id='enter-h' className='text-h3 font-semibold'>
+        How to enter
+      </h2>
+      <ol className='mt-4 grid gap-4 md:grid-cols-3'>
         {steps.map((s, i) => (
-          <li key={i} className='flex gap-3 rounded-xl bg-neutral-50 px-4 py-3 ring-1 ring-neutral-100'>
-            <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-950 text-xs font-semibold text-white'>{i + 1}</span>
-            <div className='min-w-0 text-sm'>
-              <p className='font-medium text-neutral-950'>{s.title}</p>
-              <p className='mt-0.5 leading-snug text-neutral-600'>{s.body}</p>
-            </div>
+          <li key={i} className='rounded-md border border-border bg-surface p-4'>
+            <span className='inline-flex size-7 items-center justify-center rounded-full bg-surface-3 text-caption font-semibold tabular-nums'>
+              {i + 1}
+            </span>
+            <p className='mt-3 font-semibold'>{s.title}</p>
+            <p className='mt-1 text-caption text-fg-muted'>{s.body}</p>
           </li>
         ))}
       </ol>
@@ -132,31 +151,38 @@ function HowToEnter({ e }: { e: ArenaEventDetail }) {
 
 function Registrations({ e }: { e: ArenaEventDetail }) {
   return (
-    <section>
-      <h2 className='flex items-center gap-2 text-lg font-semibold text-neutral-950'>
-        <Bot className='h-5 w-5 text-neutral-400' /> Registered agents
-        <span className='text-sm font-normal tabular-nums text-neutral-500'>
+    <section aria-labelledby='reg-h'>
+      <h2 id='reg-h' className='flex items-center gap-2 text-h3 font-semibold'>
+        <Bot className='size-5 text-fg-subtle' aria-hidden strokeWidth={1.75} /> Registered agents
+        <span className='text-caption font-normal tabular-nums text-fg-subtle'>
           {e.registrations.length}/{e.maxAgents}
         </span>
       </h2>
       {e.registrations.length === 0 ? (
-        <p className='mt-3 rounded-2xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500'>
-          No agents registered yet. Be the first.
-        </p>
+        <EmptyState className='mt-4 py-8' title='No agents registered yet'>
+          Be the first: create one or register an agent you already run.
+        </EmptyState>
       ) : (
-        <ul className='mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3'>
+        <ul className='mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3'>
           {e.registrations.map((r) => (
-            <li key={r.walletAddress} className='flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5'>
-              <div className='min-w-0'>
-                <p className='truncate text-sm font-semibold text-neutral-950'>{r.nickname || r.walletAddress}</p>
-                <a href={accountUrl(r.walletAddress)} target='_blank' rel='noopener noreferrer' className='block truncate font-mono text-[11px] text-neutral-400 hover:text-[#1D9BF0]'>
+            <li key={r.walletAddress} className='flex items-center gap-3 rounded-sm border border-border bg-surface px-3 py-2'>
+              <AgentAvatar name={r.nickname || r.walletAddress} size={32} />
+              <div className='min-w-0 flex-1'>
+                <p className='truncate font-semibold'>{r.nickname || r.walletAddress}</p>
+                <a
+                  href={accountUrl(r.walletAddress)}
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  className='block truncate font-mono text-[12px] text-fg-subtle hover:text-accent'
+                >
                   {r.walletAddress}
                 </a>
               </div>
               {r.model ? (
-                <span className='shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800 ring-1 ring-emerald-200' title={r.model}>
-                  🔒 {shortModel(r.model)}
-                </span>
+                <Chip tone='outline' title={r.model} className='shrink-0'>
+                  <ShieldCheck className='size-3 text-accent' aria-hidden />
+                  {shortModel(r.model, 14)}
+                </Chip>
               ) : null}
             </li>
           ))}
@@ -169,58 +195,50 @@ function Registrations({ e }: { e: ArenaEventDetail }) {
 const TABLE_STATUS: Record<string, string> = {
   playing: 'Playing',
   dealing: 'Dealing',
-  'between-hands': 'Next hand starting',
+  'between-hands': 'Next hand soon',
 };
 
 function LiveTables({ tables, mock }: { tables: ArenaTable[]; mock: boolean }) {
   return (
-    <section>
-      <h2 className='flex items-center gap-2 text-lg font-semibold text-neutral-950'>
-        <span className='relative flex h-2.5 w-2.5'>
-          <span className='absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60' />
-          <span className='relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500' />
-        </span>
+    <section aria-labelledby='lt-h'>
+      <h2 id='lt-h' className='text-h3 font-semibold'>
         Live tables
       </h2>
       {tables.length === 0 ? (
-        <p className='mt-3 rounded-2xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500'>
-          Waiting for at least two registered agents to be online.
-        </p>
+        <EmptyState className='mt-4 py-8' title='Seating agents'>
+          Waiting for at least two registered agents to come online.
+        </EmptyState>
       ) : (
-        <div className='mt-3 grid gap-3 md:grid-cols-2'>
+        <div className='mt-4 grid gap-4 md:grid-cols-2'>
           {tables.map((t) => {
             const seats = Array.isArray(t.seats) ? t.seats : [];
             return (
               <Link
                 key={t.gameId}
                 href={`/game/${encodeURIComponent(t.gameId)}${mock ? '?mock=1' : ''}`}
-                className='group rounded-2xl border border-neutral-200 bg-white p-4 transition hover:border-neutral-300 hover:shadow-sm'
+                className='group rounded-md border border-border bg-surface p-4 transition-colors hover:border-border-strong hover:bg-surface-2'
               >
                 <div className='flex items-center justify-between gap-3'>
-                  <span className='flex min-w-0 items-center gap-2.5'>
-                    <span className='flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100'>
-                      <Spade className='h-4 w-4 fill-current' />
-                    </span>
-                    <span className='truncate font-semibold text-neutral-950 group-hover:text-[#1D9BF0]'>{t.name}</span>
-                  </span>
-                  <span className='text-xs text-neutral-500'>
+                  <span className='truncate font-semibold group-hover:text-accent'>{t.name}</span>
+                  <span className='shrink-0 text-caption text-fg-subtle'>
                     {t.closing ? 'Last hand' : TABLE_STATUS[t.status] ?? t.status} · {t.handsPlayed} hands
                   </span>
                 </div>
-                <div className='mt-3 flex flex-wrap gap-1.5'>
+                <div className='mt-3 flex flex-wrap gap-2'>
                   {seats.map((s) => (
-                    <span key={s.playerId ?? s.seat} className='rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-800'>
+                    <span key={s.playerId ?? s.seat} className='inline-flex items-center gap-1.5 text-caption text-fg'>
+                      <AgentAvatar name={s.nickname ?? '?'} size={20} />
                       {s.nickname}
                     </span>
                   ))}
                   {(t.waiting ?? []).map((w) => (
-                    <span key={w.nickname} className='rounded-full border border-dashed border-neutral-300 px-2.5 py-1 text-xs text-neutral-500'>
-                      {w.nickname} · joining next hand
+                    <span key={w.nickname} className='text-caption text-fg-subtle'>
+                      + {w.nickname} (next hand)
                     </span>
                   ))}
                 </div>
-                <p className='mt-3 inline-flex items-center gap-1 text-xs font-medium text-neutral-700 group-hover:text-[#1D9BF0]'>
-                  Watch <ArrowRight className='h-3.5 w-3.5' />
+                <p className='mt-3 inline-flex items-center gap-1 text-caption font-semibold text-accent'>
+                  Watch <ArrowRight className='size-4' aria-hidden />
                 </p>
               </Link>
             );
@@ -236,114 +254,150 @@ function Standings({ e }: { e: ArenaEventDetail }) {
   const rows = e.leaderboard;
   const winner = final ? rows[0] : undefined;
   return (
-    <section>
-      <h2 className='flex items-center gap-2 text-lg font-semibold text-neutral-950'>
-        <Trophy className='h-5 w-5 text-neutral-400' />
-        {final ? 'Final standings' : 'Live leaderboard'}
-        {!final ? <span className='text-xs font-normal text-neutral-400'>net chips in event hands · refreshes every 5s</span> : null}
-      </h2>
+    <section aria-labelledby='st-h'>
+      <div className='flex flex-wrap items-baseline gap-x-3 gap-y-1'>
+        <h2 id='st-h' className='text-h3 font-semibold'>
+          {final ? 'Final leaderboard' : 'Leaderboard'}
+        </h2>
+        {!final ? <span className='text-caption text-fg-subtle'>Net chips in event hands · updates every 5 s</span> : null}
+      </div>
       {winner ? (
-        <div className='mt-3 flex items-center gap-4 rounded-2xl border border-[#F5C542]/60 bg-gradient-to-r from-[#F5C542]/20 via-[#F5C542]/5 to-white px-5 py-4'>
-          <span className='flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#F5C542] text-neutral-950'>
-            <Crown className='h-6 w-6' />
+        <div className='mt-4 flex items-center gap-4 rounded-md border border-gold/40 bg-gold/10 p-4 sm:p-6'>
+          <span className='inline-flex size-12 shrink-0 items-center justify-center rounded-full bg-gold text-accent-ink'>
+            <Crown className='size-6' aria-hidden />
           </span>
           <div className='min-w-0'>
-            <p className='text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500'>Winner</p>
-            <p className='truncate font-poker text-2xl tracking-wide text-neutral-950 sm:text-3xl'>{winner.nickname || winner.walletAddress}</p>
-            <p className='text-sm text-neutral-600'>
-              {winner.netChips >= 0 ? '+' : ''}
-              {winner.netChips.toLocaleString()} chips · {winner.hands} hands · {shortModel(winner.model, 28)}
+            <p className='eyebrow'>Winner</p>
+            <p className='truncate text-h3 font-semibold'>{winner.nickname || winner.walletAddress}</p>
+            <p className='text-caption text-fg-muted'>
+              <span className='font-semibold tabular-nums text-positive'>
+                {winner.netChips >= 0 ? '+' : '−'}
+                {Math.abs(winner.netChips).toLocaleString()}
+              </span>{' '}
+              chips · {winner.hands} hands · {shortModel(winner.model, 28)}
             </p>
           </div>
         </div>
       ) : null}
       {rows.length === 0 ? (
-        <p className='mt-3 rounded-2xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500'>
-          {final ? 'No hands were played in this event.' : 'Standings appear after the first completed hand.'}
-        </p>
+        <EmptyState className='mt-4 py-8' title={final ? 'No hands were played' : 'No hands finished yet'}>
+          {final ? 'This event ended without a completed hand.' : 'Standings appear after the first completed hand.'}
+        </EmptyState>
       ) : (
-        <div className='mt-3 overflow-hidden rounded-2xl border border-neutral-200 bg-white'>
-          <div className='overflow-x-auto'>
-            <table className='w-full min-w-[34rem] text-left text-sm'>
-              <thead>
-                <tr className='bg-neutral-50/80 text-[11px] font-semibold uppercase tracking-wide text-neutral-400'>
-                  <th className='px-4 py-2.5'>#</th>
-                  <th className='px-4 py-2.5'>Agent</th>
-                  <th className='px-4 py-2.5'>Model</th>
-                  <th className='px-4 py-2.5 text-right'>Hands</th>
-                  <th className='px-4 py-2.5 text-right'>TEE moves</th>
-                  <th className='px-4 py-2.5 text-right'>Net chips</th>
+        <Card className='mt-4 overflow-hidden p-0 sm:p-0'>
+          <div className='hidden sm:block'>
+            <DataTable>
+              <THead>
+                <tr>
+                  <TH className='w-12'>#</TH>
+                  <TH>Agent</TH>
+                  <TH className='hidden md:table-cell'>Model</TH>
+                  <TH numeric>Hands</TH>
+                  <TH numeric>Verified moves</TH>
+                  <TH numeric>Net chips</TH>
                 </tr>
-              </thead>
+              </THead>
               <tbody>
                 {rows.map((r, i) => (
-                  <tr key={r.walletAddress || i} className={cn('border-t border-neutral-100', final && i === 0 && 'bg-[#F5C542]/10')}>
-                    <td className='px-4 py-2.5'>
-                      <span
-                        className={cn(
-                          'inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold',
-                          i === 0 ? 'bg-[#F5C542] text-neutral-950' : i === 1 ? 'bg-neutral-200 text-neutral-800' : i === 2 ? 'bg-[#D4A574] text-white' : 'bg-neutral-100 text-neutral-600'
-                        )}
-                      >
-                        {i + 1}
-                      </span>
-                    </td>
-                    <td className='px-4 py-2.5 font-medium text-neutral-950'>{r.nickname || r.walletAddress}</td>
-                    <td className='px-4 py-2.5 text-neutral-600' title={r.model}>
+                  <TR key={r.walletAddress || i} selected={final && i === 0}>
+                    <TD>
+                      <RankBadge rank={i + 1} />
+                    </TD>
+                    <TD className='font-semibold'>{r.nickname || r.walletAddress}</TD>
+                    <TD className='hidden font-mono text-[12px] text-fg-muted md:table-cell' title={r.model}>
                       {shortModel(r.model, 24)}
-                    </td>
-                    <td className='px-4 py-2.5 text-right tabular-nums text-neutral-700'>{r.hands}</td>
-                    <td className='px-4 py-2.5 text-right tabular-nums text-neutral-700'>{r.movesVerified}</td>
-                    <td className={cn('px-4 py-2.5 text-right font-semibold tabular-nums', r.netChips >= 0 ? 'text-emerald-700' : 'text-red-600')}>
-                      {r.netChips >= 0 ? '+' : ''}
-                      {r.netChips.toLocaleString()}
-                    </td>
-                  </tr>
+                    </TD>
+                    <TD numeric className='text-fg-muted'>
+                      {r.hands}
+                    </TD>
+                    <TD numeric className='text-fg-muted'>
+                      <span className='inline-flex items-center gap-2'>
+                        {r.movesVerified} <VerifiedPill compact />
+                      </span>
+                    </TD>
+                    <TD numeric className={cn('font-semibold', r.netChips >= 0 ? 'text-positive' : 'text-negative')}>
+                      {r.netChips >= 0 ? '+' : '−'}
+                      {Math.abs(r.netChips).toLocaleString()}
+                    </TD>
+                  </TR>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
-        </div>
+          <ul className='divide-y divide-border sm:hidden'>
+            {rows.map((r, i) => (
+              <li key={r.walletAddress || i} className='flex min-h-14 items-center gap-3 px-4 py-3'>
+                <RankBadge rank={i + 1} />
+                <div className='min-w-0 flex-1'>
+                  <p className='truncate font-semibold'>{r.nickname || r.walletAddress}</p>
+                  <p className='text-caption text-fg-subtle'>
+                    {r.hands} hands · {r.movesVerified} verified moves
+                  </p>
+                </div>
+                <span className={cn('font-semibold tabular-nums', r.netChips >= 0 ? 'text-positive' : 'text-negative')}>
+                  {r.netChips >= 0 ? '+' : '−'}
+                  {Math.abs(r.netChips).toLocaleString()}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
     </section>
   );
 }
 
 export function EventDetail({ eventId, mock }: { eventId: string; mock?: MockState }) {
-  const { data: e, isLoading, isError, error } = useQuery({
+  const { data: e, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['arena-event', eventId, mock],
     queryFn: () => (mock ? Promise.resolve(mockEventDetail(eventId, mock)) : api.event(eventId)),
     refetchInterval: 5000,
     retry: false,
   });
+  const notFound = isError && /EventNotFound|\(404\)/.test(errorHandler(error));
 
   return (
-    <div className='mx-auto w-full max-w-6xl px-4 pb-20 pt-20 sm:px-6 sm:pt-24 lg:px-8'>
-      <Link href={`/events${mock ? '?mock=1' : ''}`} className='inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-900'>
-        <ArrowLeft className='h-4 w-4' /> All events
+    <Page>
+      <Link href={`/events${mock ? '?mock=1' : ''}`} className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), '-ml-3 mb-4')}>
+        <ArrowLeft aria-hidden /> All events
       </Link>
-      <div className='mt-4'>
-        {isLoading ? (
-          <p className='text-sm text-neutral-500'>Loading event…</p>
-        ) : isError || !e ? (
-          <p className='rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'>
-            {errorHandler(error) === 'EventNotFound' ? 'No such event.' : `Could not load the event: ${errorHandler(error)}`}
-          </p>
-        ) : (
-          <div className='flex flex-col gap-8'>
-            <Hero e={e} />
-            {e.status === 'live' ? (
-              <>
-                <LiveTables tables={e.tables} mock={Boolean(mock)} />
-                <Standings e={e} />
-              </>
-            ) : null}
-            {e.status === 'ended' ? <Standings e={e} /> : null}
-            {e.status !== 'ended' ? <HowToEnter e={e} /> : null}
-            <Registrations e={e} />
-          </div>
-        )}
-      </div>
-    </div>
+      {isLoading ? (
+        <Skeleton className='h-72 rounded-md' />
+      ) : notFound ? (
+        <>
+          <h1 className='font-display text-h1-sm uppercase sm:text-h1'>Event not found</h1>
+          <EmptyState
+            className='mt-6'
+            icon={<CalendarX />}
+            title='There’s no event with this link'
+            actions={
+              <Link href='/events' className={buttonVariants({ variant: 'primary' })}>
+                See all events
+              </Link>
+            }
+          >
+            It may have been removed, or the link is mistyped.
+          </EmptyState>
+        </>
+      ) : isError || !e ? (
+        <>
+          <h1 className='sr-only'>Event</h1>
+          <ErrorState onRetry={() => void refetch()} retrying={isFetching} />
+        </>
+      ) : (
+        <div className='flex flex-col gap-12'>
+          <Hero e={e} />
+          {e.status === 'live' ? (
+            <>
+              <LiveTables tables={e.tables} mock={Boolean(mock)} />
+              <Standings e={e} />
+            </>
+          ) : null}
+          {e.status === 'ended' ? <Standings e={e} /> : null}
+          {e.status === 'scheduled' ? <HowToEnter e={e} /> : null}
+          <Registrations e={e} />
+        </div>
+      )}
+    </Page>
   );
 }

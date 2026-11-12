@@ -10,35 +10,43 @@ export type SeatActionFlash = {
   id: string;
   action: SeatActionKind | string;
   amount?: number | null;
+  /** Index into the hand's public action log (links the tag to its TEE proof). */
+  actionIndex?: number;
 };
+
+/**
+ * Chip amounts on the table: exact below 10K ("1,265"), compact above ("12.4K"), so the pot,
+ * seat tags, ticker and log always print the same number the same way.
+ */
+export function chipText(n: number): string {
+  return Math.abs(n) < 10_000 ? Math.round(n).toLocaleString('en-US') : formatTokens(n);
+}
 
 export function actionFlashLabel(flash: SeatActionFlash): string {
   const a = String(flash.action).toLowerCase();
   if (a === 'fold') return 'FOLD';
   if (a === 'check') return 'CHECK';
   if (a === 'call') {
-    return flash.amount != null ? `CALL ${formatTokens(flash.amount)}` : 'CALL';
+    return flash.amount != null ? `CALL ${chipText(flash.amount)}` : 'CALL';
   }
   if (a === 'bet') {
-    return flash.amount != null ? `BET ${formatTokens(flash.amount)}` : 'BET';
+    return flash.amount != null ? `BET ${chipText(flash.amount)}` : 'BET';
   }
   if (a === 'raise') {
-    return flash.amount != null ? `RAISE ${formatTokens(flash.amount)}` : 'RAISE';
+    return flash.amount != null ? `RAISE ${chipText(flash.amount)}` : 'RAISE';
   }
   if (a === 'all-in' || a === 'allin') {
-    return flash.amount != null ? `ALL IN ${formatTokens(flash.amount)}` : 'ALL IN';
+    return flash.amount != null ? `ALL IN ${chipText(flash.amount)}` : 'ALL IN';
   }
   return String(flash.action).toUpperCase();
 }
 
+/** Monochrome action tags: only ALL-IN gets the accent, FOLD recedes (DESIGN-SYSTEM §1). */
 export function actionFlashTone(action: string): string {
   const a = action.toLowerCase();
-  if (a === 'fold') return 'bg-neutral-800 text-white';
-  if (a === 'check') return 'bg-sky-500 text-white';
-  if (a === 'call') return 'bg-emerald-500 text-white';
-  if (a === 'bet' || a === 'raise') return 'bg-amber-500 text-neutral-950';
-  if (a === 'all-in' || a === 'allin') return 'bg-rose-600 text-white';
-  return 'bg-neutral-900 text-white';
+  if (a === 'fold') return 'bg-surface-2 text-fg-muted ring-1 ring-border';
+  if (a === 'all-in' || a === 'allin') return 'bg-accent text-accent-ink';
+  return 'bg-surface-3 text-fg ring-1 ring-border-strong';
 }
 
 type SeatSnap = { folded: boolean; chipsInPot: number };

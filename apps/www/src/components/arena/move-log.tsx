@@ -8,95 +8,98 @@ import { formatTokens } from '~/lib/format';
 
 import { useQuery } from '@tanstack/react-query';
 
-import { ArrowUpRight } from 'lucide-react';
+import { Card } from '~/components/ui/card';
+import { DataTable, TD, TH, THead, TR } from '~/components/ui/data-table';
+import { Term } from '~/components/ui/term';
+
+import { ArrowUpRight, ShieldCheck } from 'lucide-react';
 
 /** INTERFACES §5.4 — TEE-signed moves for one arena hand. Renders nothing when empty. */
-export const HandMoveLog = ({
-  handId,
-  mock = false,
-}: {
-  handId: string;
-  mock?: boolean;
-}) => {
+export const HandMoveLog = ({ handId, mock = false }: { handId: string; mock?: boolean }) => {
   const { data, isError } = useQuery({
     queryKey: ['arena-moves', handId, mock],
-    queryFn: () =>
-      mock ? Promise.resolve(mockArenaMoves()) : api.arenaMoves(handId),
+    queryFn: () => (mock ? Promise.resolve(mockArenaMoves()) : api.arenaMoves(handId)),
     retry: false,
   });
 
   if (isError || !data || data.length === 0) return null;
 
+  const Receipt = ({ m }: { m: (typeof data)[number] }) => (
+    <a
+      href={receiptUrl(m)}
+      target='_blank'
+      rel='noopener noreferrer'
+      title={`completion ${m.completionId} · signer ${m.signingAddress}`}
+      className='inline-flex h-8 items-center gap-1 rounded-xs px-2 text-caption font-semibold text-accent hover:bg-accent-soft max-sm:h-11'
+    >
+      <ShieldCheck className='size-3.5' aria-hidden />
+      Receipt
+      <ArrowUpRight className='size-3.5' aria-hidden />
+      <span className='sr-only'>(opens NEAR AI Verification Center)</span>
+    </a>
+  );
+
   return (
-    <section className='mt-8'>
-      <h2 className='text-lg font-semibold text-neutral-950'>
-        Agent moves {mock ? '(mock)' : ''}
+    <section aria-labelledby='moves-h'>
+      <h2 id='moves-h' className='text-h3 font-semibold'>
+        Agent moves {mock ? <span className='text-caption font-normal text-fg-subtle'>(demo)</span> : null}
       </h2>
-      <p className='mt-1 text-sm text-neutral-600'>
-        Every move below was produced by a NEAR AI Cloud model inside a TEE and
-        its signed receipt was checked before it was applied. Open a receipt to
-        re-check it in the NEAR AI Verification Center.
+      <p className='mt-1 max-w-[64ch] text-caption text-fg-muted'>
+        Each move came from a NEAR AI Cloud model running in a <Term t='tee'>TEE</Term>; its signed{' '}
+        <Term t='receipt'>receipt</Term> was checked before the move was applied. Open one to re-check it in the NEAR AI
+        Verification Center.
       </p>
-      <div className='mt-3 overflow-hidden rounded-2xl border border-neutral-200 bg-white'>
-        <div className='overflow-x-auto'>
-          <table className='w-full min-w-[34rem] border-collapse text-left text-sm'>
-            <thead>
-              <tr className='bg-neutral-50/80 text-[11px] font-semibold uppercase tracking-wide text-neutral-400'>
-                <th className='px-4 py-2.5 font-semibold'>#</th>
-                <th className='px-4 py-2.5 font-semibold'>Player</th>
-                <th className='px-4 py-2.5 font-semibold'>Action</th>
-                <th className='px-4 py-2.5 text-right font-semibold'>Amount</th>
-                <th className='px-4 py-2.5 font-semibold'>Model</th>
-                <th className='px-4 py-2.5 text-right font-semibold'>
-                  Receipt
-                </th>
+      <Card className='mt-4 overflow-hidden p-0 sm:p-0'>
+        <div className='hidden sm:block'>
+          <DataTable>
+            <THead>
+              <tr>
+                <TH className='w-10'>#</TH>
+                <TH>Agent</TH>
+                <TH>Action</TH>
+                <TH numeric>Amount</TH>
+                <TH className='hidden md:table-cell'>Model</TH>
+                <TH className='text-right'>Receipt</TH>
               </tr>
-            </thead>
+            </THead>
             <tbody>
               {data.map((m, i) => (
-                <tr
-                  key={`${m.completionId}-${i}`}
-                  className='border-t border-neutral-100'
-                >
-                  <td className='px-4 py-2.5 tabular-nums text-neutral-400'>
-                    {i + 1}
-                  </td>
-                  <td
-                    className='max-w-[12rem] truncate px-4 py-2.5 font-medium text-neutral-900'
-                    title={m.playerId}
-                  >
+                <TR key={`${m.completionId}-${i}`}>
+                  <TD className='tabular-nums text-fg-subtle'>{i + 1}</TD>
+                  <TD className='max-w-[12rem] truncate font-semibold' title={m.playerId}>
                     {m.nickname || m.playerId}
-                  </td>
-                  <td className='px-4 py-2.5 capitalize text-neutral-700'>
-                    {m.action}
-                  </td>
-                  <td className='px-4 py-2.5 text-right tabular-nums text-neutral-700'>
+                  </TD>
+                  <TD className='capitalize text-fg-muted'>{m.action}</TD>
+                  <TD numeric className='text-fg-muted'>
                     {m.amount ? formatTokens(m.amount) : '—'}
-                  </td>
-                  <td
-                    className='px-4 py-2.5 font-mono text-xs text-neutral-600'
-                    title={m.model}
-                  >
+                  </TD>
+                  <TD className='hidden font-mono text-[12px] text-fg-subtle md:table-cell' title={m.model}>
                     {shortModel(m.model, 22)}
-                  </td>
-                  <td className='px-4 py-2.5 text-right'>
-                    <a
-                      href={receiptUrl(m)}
-                      target='_blank'
-                      rel='noopener noreferrer'
-                      title={`completion ${m.completionId} · signer ${m.signingAddress}`}
-                      className='inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100'
-                    >
-                      receipt ✓
-                      <ArrowUpRight className='h-3 w-3' />
-                    </a>
-                  </td>
-                </tr>
+                  </TD>
+                  <TD className='text-right'>
+                    <Receipt m={m} />
+                  </TD>
+                </TR>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
-      </div>
+        <ol className='divide-y divide-border sm:hidden'>
+          {data.map((m, i) => (
+            <li key={`${m.completionId}-${i}`} className='flex min-h-14 items-center gap-3 px-4 py-2'>
+              <span className='w-5 text-caption tabular-nums text-fg-subtle'>{i + 1}</span>
+              <span className='min-w-0 flex-1 truncate'>
+                <span className='font-semibold'>{m.nickname || m.playerId}</span>{' '}
+                <span className='text-fg-muted'>
+                  {m.action}
+                  {m.amount ? ` ${formatTokens(m.amount)}` : ''}
+                </span>
+              </span>
+              <Receipt m={m} />
+            </li>
+          ))}
+        </ol>
+      </Card>
     </section>
   );
 };

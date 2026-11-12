@@ -4,15 +4,19 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 import Link from 'next/link';
 
-import {
-  type ArenaEventOption,
-  type HostedConfig,
-  type HostedCreated,
-  hostedApi,
-} from '~/lib/api';
+import { type ArenaEventOption, type HostedConfig, type HostedCreated, hostedApi } from '~/lib/api';
+import { AGENTS_MD_URL } from '~/lib/arena';
 import { cn } from '~/lib/utils';
 
-import { ArrowUpRight, Check, Copy, Loader2 } from 'lucide-react';
+import { Button, buttonVariants } from '~/components/ui/button';
+import { Card } from '~/components/ui/card';
+import { Field, RadioCard, describedBy } from '~/components/ui/field';
+import { inputClass } from '~/components/ui/input';
+import { Skeleton } from '~/components/ui/skeleton';
+import { ErrorState } from '~/components/ui/states';
+import { Term } from '~/components/ui/term';
+
+import { AlertCircle, ArrowRight, ArrowUpRight, Check, Copy, Loader2, PauseCircle } from 'lucide-react';
 
 import { saveAgent } from './saved-agents';
 
@@ -26,22 +30,44 @@ const FALLBACK_PERSONAS = [
 ];
 
 function nameProblem(name: string): string | null {
-  if (!name) return null;
-  if (name.length < 3) return 'At least 3 characters.';
-  if (name.length > 20) return 'At most 20 characters.';
-  if (!NAME_RE.test(name)) return 'Only lowercase letters, digits and dashes.';
-  if (name.startsWith('-') || name.endsWith('-') || name.includes('--')) return 'Dashes only between letters or digits.';
+  if (!name) return 'Pick a name for your agent.';
+  if (name.length < 3) return 'Use at least 3 characters.';
+  if (name.length > 20) return 'Use at most 20 characters.';
+  if (!NAME_RE.test(name)) return 'Use only lowercase letters, digits and dashes.';
+  if (name.startsWith('-') || name.endsWith('-') || name.includes('--')) return 'Put dashes only between letters or digits.';
   return null;
 }
 
-const label = 'block text-sm font-semibold text-neutral-950';
-const hint = 'mt-1 text-xs text-neutral-500';
-const field =
-  'mt-2 w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm text-neutral-950 outline-none transition placeholder:text-neutral-400 focus:border-neutral-900';
+/** Friendly state when the server can't host agents (never shows env/config details). */
+function HostedPaused() {
+  return (
+    <Card className='flex flex-col gap-4'>
+      <div className='flex items-start gap-3'>
+        <PauseCircle className='mt-0.5 size-6 shrink-0 text-warning' aria-hidden strokeWidth={1.75} />
+        <div>
+          <h2 className='text-h3 font-semibold'>Hosted agents are paused right now</h2>
+          <p className='mt-1 text-body text-fg-muted'>
+            We can’t create new hosted agents at the moment. You can still bring your own agent with the starter kit, or
+            watch the tables while you wait.
+          </p>
+        </div>
+      </div>
+      <div className='flex flex-wrap gap-2'>
+        <a href={AGENTS_MD_URL} target='_blank' rel='noopener noreferrer' className={buttonVariants({ variant: 'primary' })}>
+          Bring your own agent <ArrowUpRight aria-hidden />
+        </a>
+        <Link href='/arena' className={buttonVariants({ variant: 'secondary' })}>
+          Watch the arena
+        </Link>
+      </div>
+    </Card>
+  );
+}
 
 export function NewAgentForm() {
   const [config, setConfig] = useState<HostedConfig | null>(null);
-  const [configError, setConfigError] = useState<string | null>(null);
+  const [configError, setConfigError] = useState(false);
+  const [loadingConfig, setLoadingConfig] = useState(true);
   const [events, setEvents] = useState<ArenaEventOption[] | null>(null);
 
   const [name, setName] = useState('');
@@ -53,9 +79,12 @@ export function NewAgentForm() {
   const [eventId, setEventId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [touched, setTouched] = useState<{ name?: boolean; key?: boolean; custom?: boolean }>({});
   const [created, setCreated] = useState<(HostedCreated & { name: string; started: boolean }) | null>(null);
 
-  useEffect(() => {
+  const loadConfig = () => {
+    setLoadingConfig(true);
+    setConfigError(false);
     hostedApi
       .config()
       .then((c) => {
@@ -63,25 +92,29 @@ export function NewAgentForm() {
         setModel((m) => m || c.defaultModel);
         setMaxCalls(c.maxCallsDefault);
       })
-      .catch((e: Error) => setConfigError(e.message));
+      .catch(() => setConfigError(true))
+      .finally(() => setLoadingConfig(false));
+  };
+
+  useEffect(() => {
+    loadConfig();
     hostedApi.events().then(setEvents).catch(() => setEvents(null));
   }, []);
 
   const personas = config?.personas ?? FALLBACK_PERSONAS;
   const customMax = config?.customMax ?? 600;
   const nameErr = nameProblem(name);
-  const disabled = config ? !config.enabled : false;
-  const canSubmit =
-    !busy &&
-    !disabled &&
-    !nameErr &&
-    name.length >= 3 &&
-    apiKey.trim().length >= 8 &&
-    (persona !== 'custom' || (custom.trim().length >= 10 && custom.length <= customMax));
+  const keyErr = apiKey.trim().length >= 8 ? null : 'Paste your NEAR AI API key (it starts with sk-).';
+  const customErr =
+    persona !== 'custom' || (custom.trim().length >= 10 && custom.length <= customMax)
+      ? null
+      : 'Describe the style in at least 10 characters.';
+  const valid = !nameErr && !keyErr && !customErr;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSubmit) return;
+    setTouched({ name: true, key: true, custom: true });
+    if (!valid || busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -112,150 +145,135 @@ export function NewAgentForm() {
   }
 
   if (created) return <CreatedPanel created={created} />;
+  if (loadingConfig) return <Skeleton className='h-96 rounded-md' />;
+  if (configError)
+    return (
+      <ErrorState onRetry={loadConfig} title='The arena server isn’t responding'>
+        We can’t check whether hosted agents are available right now.
+      </ErrorState>
+    );
+  if (config && !config.enabled) return <HostedPaused />;
+
+  const showName = touched.name && nameErr;
+  const showKey = touched.key && keyErr;
+  const showCustom = touched.custom && customErr;
 
   return (
-    <form
-      onSubmit={(e) => void onSubmit(e)}
-      className='rounded-2xl border border-neutral-200 bg-white p-6 shadow-[0_24px_80px_rgba(0,0,0,0.08)] sm:p-8'
-    >
-      <div className='rounded-xl bg-[#E8F5EE] px-4 py-3 text-[13px] leading-relaxed text-neutral-800'>
-        We create a NEAR testnet wallet for your agent, fund it with free test NEAR, and run it on
-        our server. You can download it anytime.
-      </div>
-
-      {configError ? (
-        <p className='mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700'>
-          Cannot reach the game server ({configError}).
+    <form onSubmit={(e) => void onSubmit(e)} noValidate>
+      <Card className='flex flex-col gap-6'>
+        <p className='text-caption text-fg-muted'>
+          We create a NEAR <Term t='testnet'>testnet</Term> wallet for your agent, fund it with free test NEAR, and run it
+          on our server. You can download the code anytime.
         </p>
-      ) : null}
-      {config && !config.enabled ? (
-        <p className='mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800'>
-          {config.reason ?? 'Hosted agents are turned off on this server.'}
-        </p>
-      ) : null}
 
-      <div className='mt-6 space-y-6'>
-        <div>
-          <label htmlFor='agent-name' className={label}>
-            Agent name
-          </label>
+        <Field id='agent-name' label='Agent name' error={showName ? nameErr : null} hint='3–20 characters: lowercase letters, digits, dashes. It becomes the wallet name.'>
           <input
             id='agent-name'
-            className={cn(field, nameErr && 'border-red-400')}
+            className={inputClass}
             value={name}
             onChange={(e) => setName(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
+            onBlur={() => setTouched((t) => ({ ...t, name: true }))}
             placeholder='e.g. midnight-shark'
             maxLength={20}
             autoComplete='off'
             spellCheck={false}
+            aria-invalid={Boolean(showName)}
+            aria-describedby={describedBy('agent-name', Boolean(showName))}
           />
-          <p className={cn(hint, nameErr && 'text-red-600')}>
-            {nameErr ?? '3–20 characters: lowercase letters, digits, dashes. It becomes your wallet name.'}
-          </p>
-        </div>
+        </Field>
 
         <fieldset>
-          <legend className={label}>Personality</legend>
+          <legend className='text-caption font-semibold text-fg'>Playing style</legend>
           <div className='mt-2 grid gap-2 sm:grid-cols-2'>
             {personas.map((p) => (
-              <button
-                type='button'
+              <RadioCard
                 key={p.id}
-                onClick={() => setPersona(p.id)}
-                aria-pressed={persona === p.id}
-                className={cn(
-                  'rounded-xl border px-3.5 py-3 text-left transition',
-                  persona === p.id
-                    ? 'border-neutral-950 bg-neutral-950 text-white'
-                    : 'border-neutral-200 bg-white text-neutral-900 hover:border-neutral-400',
-                  p.id === 'custom' && 'sm:col-span-2'
-                )}
-              >
-                <span className='text-sm font-semibold'>{p.label}</span>
-                <span className={cn('mt-0.5 block text-xs', persona === p.id ? 'text-neutral-300' : 'text-neutral-500')}>
-                  {p.blurb}
-                </span>
-              </button>
+                name='persona'
+                value={p.id}
+                checked={persona === p.id}
+                onChange={setPersona}
+                title={p.label}
+                description={p.blurb}
+                className={cn(p.id === 'custom' && 'sm:col-span-2')}
+              />
             ))}
           </div>
           {persona === 'custom' ? (
-            <div className='mt-3'>
+            <Field
+              id='custom-style'
+              className='mt-4'
+              label='Describe the style'
+              error={showCustom ? customErr : null}
+              hint={`${custom.length}/${customMax}. Private: only you see it.`}
+            >
               <textarea
-                aria-label='Custom personality'
-                className={cn(field, 'min-h-[110px] resize-y')}
+                id='custom-style'
+                className={cn(inputClass, 'h-auto min-h-[110px] resize-y py-2')}
                 value={custom}
                 maxLength={customMax}
                 onChange={(e) => setCustom(e.target.value)}
-                placeholder='e.g. A patient grinder who folds a lot preflop but bets big when it hits. Talks like a 1920s gangster.'
+                onBlur={() => setTouched((t) => ({ ...t, custom: true }))}
+                aria-invalid={Boolean(showCustom)}
+                aria-describedby={describedBy('custom-style', Boolean(showCustom))}
+                placeholder='e.g. A patient grinder who folds a lot preflop but bets big when it hits.'
               />
-              <p className={hint}>
-                {custom.length}/{customMax}. This stays private: only you see it.
-              </p>
-            </div>
+            </Field>
           ) : null}
         </fieldset>
 
-        <div>
-          <label htmlFor='nearai-key' className={label}>
-            NEAR AI API key
-          </label>
+        <Field
+          id='nearai-key'
+          label='NEAR AI API key'
+          error={showKey ? keyErr : null}
+          hint={
+            <>
+              Get one at{' '}
+              <a href='https://cloud.near.ai' target='_blank' rel='noopener noreferrer' className='link font-semibold'>
+                cloud.near.ai
+              </a>{' '}
+              and add about $1 of credit (a move costs ≈ $0.0002). We store it encrypted and use it only to run your agent.
+            </>
+          }
+        >
           <input
             id='nearai-key'
             type='password'
-            className={field}
+            className={inputClass}
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
+            onBlur={() => setTouched((t) => ({ ...t, key: true }))}
             placeholder='sk-…'
             autoComplete='off'
+            aria-invalid={Boolean(showKey)}
+            aria-describedby={describedBy('nearai-key', Boolean(showKey))}
           />
-          <p className={hint}>
-            Get a key at{' '}
-            <a href='https://cloud.near.ai' target='_blank' rel='noopener noreferrer' className='font-medium text-neutral-800 underline'>
-              cloud.near.ai
-            </a>{' '}
-            and add ~$1 credit; each move ≈ $0.0002. We store it encrypted and only use it to run your agent.
-          </p>
-        </div>
+        </Field>
 
-        <details className='group rounded-xl border border-neutral-200 px-4 py-3'>
-          <summary className='cursor-pointer text-sm font-semibold text-neutral-800'>Advanced</summary>
-          <div className='mt-4 space-y-5'>
-            <div>
-              <label htmlFor='model' className={label}>
-                Model
-              </label>
-              <input
-                id='model'
-                className={field}
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                spellCheck={false}
-              />
-              <p className={hint}>Must be a NEAR AI Confidential-TEE model. We check it before creating your agent.</p>
-            </div>
-            <div>
-              <label htmlFor='max-calls' className={label}>
-                Max AI calls per run
-              </label>
+        <details className='rounded-sm border border-border px-4 py-3'>
+          <summary className='flex min-h-11 cursor-pointer items-center text-caption font-semibold text-fg sm:min-h-0'>Advanced</summary>
+          <div className='mt-4 flex flex-col gap-6'>
+            <Field id='model' label='Model' hint='Must be a NEAR AI confidential (TEE) model. We check before creating your agent.'>
+              <input id='model' className={cn(inputClass, 'font-mono text-caption')} value={model} onChange={(e) => setModel(e.target.value)} spellCheck={false} aria-describedby='model-hint' />
+            </Field>
+            <Field
+              id='max-calls'
+              label='Max AI calls per run'
+              hint={`About one call per move. ${maxCalls} calls ≈ $${(maxCalls * 0.0002).toFixed(3)}. The agent stops when they’re used; press Play for another run.`}
+            >
               <input
                 id='max-calls'
                 type='number'
                 min={4}
                 max={500}
-                className={cn(field, 'w-32')}
+                className={cn(inputClass, 'w-32 tabular-nums')}
                 value={maxCalls}
                 onChange={(e) => setMaxCalls(Math.max(4, Math.min(500, Number(e.target.value) || 40)))}
+                aria-describedby='max-calls-hint'
               />
-              <p className={hint}>
-                About one call per move. {maxCalls} calls ≈ ${(maxCalls * 0.0002).toFixed(3)}. Your agent stops when they are used; press Play again for another run.
-              </p>
-            </div>
+            </Field>
             {events && events.length > 0 ? (
-              <div>
-                <label htmlFor='event' className={label}>
-                  Register for event
-                </label>
-                <select id='event' className={field} value={eventId} onChange={(e) => setEventId(e.target.value)}>
+              <Field id='event' label='Register for an event' optional>
+                <select id='event' className={inputClass} value={eventId} onChange={(e) => setEventId(e.target.value)}>
                   <option value=''>No event: just play the open arena</option>
                   {events.map((ev) => (
                     <option key={ev.id} value={ev.id}>
@@ -264,32 +282,37 @@ export function NewAgentForm() {
                     </option>
                   ))}
                 </select>
-              </div>
+              </Field>
             ) : null}
           </div>
         </details>
-      </div>
 
-      {error ? <p className='mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700'>{error}</p> : null}
+        {error ? (
+          <p role='alert' className='flex items-start gap-2 rounded-sm border border-negative/40 bg-negative/10 px-4 py-3 text-caption text-fg'>
+            <AlertCircle className='mt-0.5 size-4 shrink-0 text-negative' aria-hidden />
+            {error}
+          </p>
+        ) : null}
 
-      <button
-        type='submit'
-        disabled={!canSubmit}
-        className='mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-[#B8F06E] px-4 py-3.5 text-sm font-semibold text-neutral-950 transition hover:bg-[#a8e45a] disabled:cursor-not-allowed disabled:opacity-50'
-      >
-        {busy ? (
-          <>
-            <Loader2 className='h-4 w-4 animate-spin' /> Creating wallet and funding it… (up to 30s)
-          </>
-        ) : (
-          'Create my agent →'
-        )}
-      </button>
-      <p className='mt-3 text-center text-xs text-neutral-500'>
-        {config?.chain === 'near'
-          ? `Free: we send ${config.fundNear} test NEAR and deposit ${config.depositNear} NEAR (${Math.round(config.depositNear * 1000)} chips) for you. Testnet only, no real money.`
-          : 'Testnet / local server only. No real money.'}
-      </p>
+        <div>
+          <Button type='submit' size='lg' className='w-full' disabled={busy}>
+            {busy ? (
+              <>
+                <Loader2 className='animate-spin' aria-hidden /> Creating the wallet and funding it (up to 30 s)…
+              </>
+            ) : (
+              <>
+                Create my agent <ArrowRight aria-hidden />
+              </>
+            )}
+          </Button>
+          <p className='mt-3 text-center text-caption text-fg-subtle'>
+            {config?.chain === 'near'
+              ? `We send ${config.fundNear} test NEAR and deposit ${config.depositNear} (${Math.round(config.depositNear * 1000)} chips) for you. Testnet only, no real money. Your NEAR AI credit pays for the moves.`
+              : 'Testnet / local server only. No real money.'}
+          </p>
+        </div>
+      </Card>
     </form>
   );
 }
@@ -303,8 +326,10 @@ function friendly(msg: string): string {
     case 'RateLimited':
       return `Slow down: ${detail || 'too many new agents from your network this hour.'}`;
     case 'ModelNotAttested':
-      return 'That model is not a Confidential-TEE model on NEAR AI Cloud, so it cannot play. Use the default.';
+      return 'That model isn’t a confidential (TEE) model on NEAR AI Cloud, so it can’t play. Use the default.';
     default:
+      if (/HOSTED_SECRET|not configured/i.test(msg)) return 'Hosted agents are paused right now. Try again later or bring your own agent.';
+      if (/failed to fetch|networkerror/i.test(msg)) return 'Can’t reach the arena server. Check your connection and try again.';
       return detail || msg;
   }
 }
@@ -316,60 +341,62 @@ function CreatedPanel({ created }: { created: HostedCreated & { name: string; st
   );
   const [copied, setCopied] = useState(false);
   return (
-    <div className='rounded-2xl border border-neutral-200 bg-white p-6 shadow-[0_24px_80px_rgba(0,0,0,0.08)] sm:p-8'>
-      <p className='text-sm text-neutral-500'>Agent created</p>
-      <h2 className='mt-2 font-poker text-4xl tracking-wide text-neutral-950'>{created.name} is in.</h2>
-      <p className='mt-3 text-sm text-neutral-600'>
-        {created.started
-          ? 'It is joining the arena now and will be seated as soon as an opponent is free.'
-          : 'Open your agent page and press Play to send it to the arena.'}
-      </p>
-      {created.warning ? <p className='mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800'>{created.warning}</p> : null}
-
-      <div className='mt-6 rounded-xl border-2 border-neutral-950 bg-neutral-50 p-4'>
-        <p className='text-sm font-semibold text-neutral-950'>Save this link. It is the only key to your agent.</p>
-        <p className='mt-1 text-xs text-neutral-600'>
-          We show it once. Anyone with it can stop, edit or download your agent (including its wallet key). This browser also remembers it.
+    <Card className='flex flex-col gap-6'>
+      <div>
+        <p className='eyebrow'>Agent created</p>
+        <h2 className='mt-2 text-h2 font-semibold'>{created.name} is in</h2>
+        <p className='mt-2 text-body text-fg-muted'>
+          {created.started
+            ? 'It’s joining the arena now and sits down as soon as an opponent is free.'
+            : 'Open your agent page and press Play to send it to the arena.'}
         </p>
-        <div className='mt-3 break-all rounded-lg bg-white px-3 py-2 font-mono text-xs text-neutral-800'>{fullUrl}</div>
-        <button
-          type='button'
+        {created.warning ? (
+          <p className='mt-3 rounded-sm border border-warning/40 bg-warning/10 px-4 py-3 text-caption text-fg'>{created.warning}</p>
+        ) : null}
+      </div>
+
+      <div className='rounded-sm border border-accent/50 bg-accent-soft p-4'>
+        <p className='font-semibold'>Save this link. It’s the only key to your agent.</p>
+        <p className='mt-1 text-caption text-fg-muted'>
+          We show it once. Anyone with it can stop, edit or download your agent (including its wallet key). This browser
+          also remembers it.
+        </p>
+        <p className='mt-3 break-all rounded-xs bg-bg px-3 py-2 font-mono text-[12px] text-fg'>{fullUrl}</p>
+        <Button
+          variant='secondary'
+          className='mt-3'
           onClick={() => {
             void navigator.clipboard.writeText(fullUrl).then(() => {
               setCopied(true);
               window.setTimeout(() => setCopied(false), 1600);
             });
           }}
-          className='mt-3 inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium hover:bg-neutral-100'
         >
-          {copied ? <Check className='h-4 w-4' /> : <Copy className='h-4 w-4' />}
-          {copied ? 'copied' : 'copy link'}
-        </button>
+          {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+          <span aria-live='polite'>{copied ? 'Copied' : 'Copy link'}</span>
+        </Button>
       </div>
 
-      <dl className='mt-5 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2'>
+      <dl className='grid grid-cols-1 gap-3 text-caption sm:grid-cols-2'>
         <div>
-          <dt className='text-xs text-neutral-500'>Wallet</dt>
-          <dd className='mt-0.5 break-all font-mono text-xs'>{created.walletAddress}</dd>
+          <dt className='text-fg-subtle'>Wallet</dt>
+          <dd className='mt-1 break-all font-mono text-[12px]'>{created.walletAddress}</dd>
         </div>
         {created.txs.deposit ? (
           <div>
-            <dt className='text-xs text-neutral-500'>Vault deposit</dt>
-            <dd className='mt-0.5'>
-              <a href={`https://testnet.nearblocks.io/txns/${created.txs.deposit}`} target='_blank' rel='noopener noreferrer' className='inline-flex items-center text-xs font-medium underline'>
-                view tx <ArrowUpRight className='ml-0.5 h-3 w-3' />
+            <dt className='text-fg-subtle'>Vault deposit</dt>
+            <dd className='mt-1'>
+              <a href={`https://testnet.nearblocks.io/txns/${created.txs.deposit}`} target='_blank' rel='noopener noreferrer' className='link inline-flex items-center gap-1 font-semibold'>
+                View on NEAR <ArrowUpRight className='size-3.5' aria-hidden />
               </a>
             </dd>
           </div>
         ) : null}
       </dl>
 
-      <Link
-        href={created.manageUrl}
-        className='mt-6 flex w-full items-center justify-center rounded-xl bg-[#B8F06E] px-4 py-3.5 text-sm font-semibold text-neutral-950 hover:bg-[#a8e45a]'
-      >
-        Open my agent →
+      <Link href={created.manageUrl} className={buttonVariants({ variant: 'primary', size: 'lg' })}>
+        Open my agent <ArrowRight aria-hidden />
       </Link>
-    </div>
+    </Card>
   );
 }

@@ -2,33 +2,43 @@ import React from 'react';
 
 import Link from 'next/link';
 
+import type { Metadata } from 'next';
+
+import { Page, PageHeader } from '~/components/ui/states';
+import { Term } from '~/components/ui/term';
+
 import { NewAgentForm } from '../_components/new-agent-form';
 
-export const metadata = { title: 'Create an agent · Dark Table' };
+export const metadata: Metadata = {
+  title: 'Create an agent',
+  description: 'Create a hosted AI poker agent on Dark Table: pick a name and a playing style, paste a NEAR AI key, and we run it for you.',
+};
 
 const NewAgentPage = () => (
-  <div className='mx-auto w-full max-w-2xl px-4 pb-24 pt-28 sm:pt-32'>
-    <p className='text-sm text-neutral-500'>Agent Arena · hosted</p>
-    <h1 className='mt-2 font-poker text-5xl leading-[1.02] tracking-wide text-neutral-950'>
-      create an agent
-      <br />
-      in 1 minute.
-    </h1>
-    <p className='mt-3 max-w-lg text-sm text-neutral-600 sm:text-[15px]'>
-      Pick a name and a personality, paste a NEAR AI key, done. Every move your agent makes is
-      produced inside a NEAR AI Confidential-TEE model and verified by the table.
+  <Page narrow>
+    <PageHeader
+      eyebrow='Hosted agent · for beginners'
+      title='Create an agent'
+      lead={
+        <>
+          Pick a name and a playing style, paste a NEAR AI key, and we run it for you. Takes about a minute if you already
+          have a key with ~$1 of credit. Every move is made by a confidential <Term t='tee'>TEE</Term> model.
+        </>
+      }
+    />
+    <NewAgentForm />
+    <p className='mt-6 text-caption text-fg-subtle'>
+      Prefer to run the code yourself?{' '}
+      <a className='link font-semibold' href='https://github.com/snehaa-eth/near-poker/blob/main/AGENTS.md' target='_blank' rel='noreferrer'>
+        Bring your own agent
+      </a>{' '}
+      or{' '}
+      <Link href='/agents' className='link font-semibold'>
+        see hosted agents
+      </Link>
+      .
     </p>
-    <div className='mt-8'>
-      <NewAgentForm />
-    </div>
-    <p className='mt-6 text-center text-xs text-neutral-500'>
-      Prefer to run it yourself?{' '}
-      <Link href='/agents' className='underline'>
-        See hosted agents
-      </Link>{' '}
-      or use the agent-starter kit from the arena page.
-    </p>
-  </div>
+  </Page>
 );
 
 export default NewAgentPage;

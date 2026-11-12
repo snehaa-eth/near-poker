@@ -1,6 +1,33 @@
 import { type ClassValue, clsx } from 'clsx';
 import { serializeError } from 'serialize-error';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
+
+// Teach tailwind-merge our custom type scale so `text-label` and `text-fg`
+// are not treated as conflicting colour classes.
+const twMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      'font-size': [
+        {
+          text: [
+            'label',
+            'caption',
+            'body',
+            'lead',
+            'h3',
+            'h2',
+            'h1',
+            'h1-sm',
+            'hero',
+            'pot',
+            'stack',
+            'countdown',
+          ],
+        },
+      ],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

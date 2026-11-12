@@ -6,31 +6,52 @@ import { cn } from '~/lib/utils';
 import { Slot } from '@radix-ui/react-slot';
 import { type VariantProps, cva } from 'class-variance-authority';
 
+/**
+ * DESIGN-SYSTEM §8.1. One `primary` per view.
+ * Variants: primary · secondary · ghost · link · danger
+ * Sizes: sm (32) · md (40, default) · lg (48) · icon (40 square) · icon-sm (32 square)
+ * Small sizes keep a ≥44px hit area on touch screens via ::after.
+ */
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  [
+    'relative inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-sm font-semibold',
+    'transition-colors duration-instant ease-standard active:translate-y-px',
+    'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+    'disabled:pointer-events-none disabled:border-transparent disabled:bg-surface-3 disabled:text-fg-disabled',
+    '[&_svg]:size-4 [&_svg]:shrink-0',
+  ].join(' '),
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
-        destructive:
-          'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-        outline:
-          'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
+        primary: 'bg-accent text-accent-ink hover:bg-accent-hover',
         secondary:
-          'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-        ghost: 'hover:bg-accent hover:text-accent-foreground',
-        link: 'text-primary underline-offset-4 hover:underline',
+          'border border-border-strong bg-surface-2 text-fg hover:bg-surface-3',
+        ghost: 'bg-transparent text-fg-muted hover:bg-surface-2 hover:text-fg',
+        link: 'h-auto bg-transparent px-0 text-accent underline-offset-4 hover:underline active:translate-y-0',
+        danger:
+          'border border-negative/40 bg-transparent text-negative hover:bg-negative/10',
+        // Legacy names (map onto the system so older call sites keep working)
+        default: 'bg-accent text-accent-ink hover:bg-accent-hover',
+        outline:
+          'border border-border-strong bg-surface-2 text-fg hover:bg-surface-3',
+        destructive:
+          'border border-negative/40 bg-transparent text-negative hover:bg-negative/10',
       },
       size: {
-        default: 'h-10 px-4 py-2',
-        sm: 'h-9 rounded-md px-3',
-        lg: 'h-11 rounded-md px-8',
-        icon: 'h-10 w-10',
+        sm: 'h-8 px-3 text-caption after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-[""] max-sm:after:-inset-y-1.5',
+        md: 'h-10 px-4 text-body',
+        lg: 'h-12 px-5 text-body',
+        icon: 'h-10 w-10 p-0 max-sm:h-11 max-sm:w-11',
+        'icon-sm':
+          'h-8 w-8 p-0 after:absolute after:-inset-1.5 after:content-[""]',
+        // Legacy
+        default: 'h-10 px-4 text-body',
       },
     },
+    compoundVariants: [{ variant: 'link', className: 'h-auto px-0' }],
     defaultVariants: {
-      variant: 'default',
-      size: 'default',
+      variant: 'primary',
+      size: 'md',
     },
   }
 );
@@ -53,7 +74,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <Comp
         ref={ref}
         className={cn(buttonVariants({ variant, size, className }))}
-        onClick={(e) => {
+        onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
           if (sound && !props.disabled) playSound(sound);
           onClick?.(e);
         }}

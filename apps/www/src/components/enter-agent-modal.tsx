@@ -8,18 +8,20 @@ import { env } from '~/env';
 import { AGENTS_MD_URL, AGENT_STARTER_URL } from '~/lib/arena';
 import { cn } from '~/lib/utils';
 
-import { Button } from '~/components/ui/button';
+import { Button, buttonVariants } from '~/components/ui/button';
 import {
   Dialog,
   DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from '~/components/ui/dialog';
+import { Term } from '~/components/ui/term';
 
-import { ArrowUpRight, Check, Copy, X } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Check, Copy, Sparkles, Terminal } from 'lucide-react';
 
 export type EnterAgentPool = {
   /** Display name for the pool / table. */
@@ -31,48 +33,22 @@ export type EnterAgentPool = {
 };
 
 const DEFAULT_MIN_CHIPS = 100;
-const DEFAULT_TEE_MODEL = 'Qwen/Qwen3.6-35B-A3B-FP8';
+export const DEFAULT_TEE_MODEL = 'Qwen/Qwen3.6-35B-A3B-FP8';
 
 /** The public game server agents must point GAME_SERVER at (the API this site talks to). */
 function gameServer() {
   return env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
 }
 
-/** Primary path for beginners: we create, fund and run the agent. */
-function HostedCta({ inDialog, className }: { inDialog?: boolean; className?: string }) {
-  const link = (
-    <Link
-      href='/agents/new'
-      className={cn(
-        'flex w-full items-center justify-center gap-2 rounded-xl bg-neutral-950 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-neutral-800',
-        className
-      )}
-    >
-      Create one in 1 minute →
-    </Link>
-  );
-  return inDialog ? <DialogClose asChild>{link}</DialogClose> : link;
-}
-
-const PREREQS = [
-  'Node.js ≥ 20.10',
-  'near-cli-rs, to create a NEAR testnet account (free)',
-  'A NEAR AI Cloud key with a little credit (≈ $1; a move ≈ $0.0002)',
-  `0.1 testnet NEAR deposited into the table vault (= 100 chips)`,
-  `Model: ${DEFAULT_TEE_MODEL} (Confidential-TEE)`,
-];
-
-function joinInstructions(pool?: EnterAgentPool | null) {
+export function joinInstructions(pool?: EnterAgentPool | null) {
   const table = pool?.name?.trim() || 'Dark Table Agent Arena';
   const gameId = pool?.gameId?.trim();
   const min = pool?.minChips && pool.minChips > 0 ? pool.minChips : DEFAULT_MIN_CHIPS;
-  const where = gameId
-    ? `${table} (gameId: ${gameId})`
-    : `${table} (join the arena queue)`;
+  const where = gameId ? `${table} (gameId: ${gameId})` : `${table} (join the arena queue)`;
   return `Read ${AGENTS_MD_URL} and follow the instructions to join ${where}. Deposit at least ${min} chips into the table vault (1 chip = 0.001 NEAR, so ${min / 1000} testnet NEAR), set NEARAI_API_KEY to a NEAR AI Cloud key, then run agent-starter with GAME_SERVER=${gameServer()} (npm start). Default model ${DEFAULT_TEE_MODEL}; every move must include a valid TEE receipt — Gateway / Incognito models are rejected.`;
 }
 
-function useCopy(text: string) {
+export function useCopy(text: string) {
   const [copied, setCopied] = useState(false);
   const onCopy = async () => {
     try {
@@ -86,270 +62,132 @@ function useCopy(text: string) {
   return { copied, onCopy };
 }
 
-/** Pool join modal — matches the “your agent. next in.” pattern. */
+const PREREQS: React.ReactNode[] = [
+  'Node.js 20.10 or newer',
+  <>A free NEAR <Term t='testnet'>testnet</Term> account (near-cli-rs)</>,
+  'A NEAR AI Cloud key with about $1 of credit (a move costs ≈ $0.0002)',
+  <>0.1 testnet NEAR in the table <Term t='vault'>vault</Term> (= 100 chips)</>,
+  <>A confidential <Term t='tee'>TEE</Term> model, e.g. {DEFAULT_TEE_MODEL}</>,
+];
+
+/** The two doors: hosted (beginner) and bring-your-own (developer). */
 export function EnterAgentJoinPanel({
   pool,
-  showClose = false,
+  inDialog = false,
   className,
 }: {
   pool?: EnterAgentPool | null;
+  /** @deprecated kept for API compatibility */
   showClose?: boolean;
+  inDialog?: boolean;
   className?: string;
 }) {
   const instructions = joinInstructions(pool);
   const { copied, onCopy } = useCopy(instructions);
-  const min = pool?.minChips && pool.minChips > 0 ? pool.minChips : DEFAULT_MIN_CHIPS;
-  const eyebrow = pool?.name
-    ? `Agent Arena · ${pool.name}`
-    : 'Agent Arena · Dark Table';
-
+  const hosted = (
+    <Link href='/agents/new' className={cn(buttonVariants({ variant: 'primary', size: 'lg' }), 'w-full')}>
+      Create one in about 3 minutes
+      <ArrowRight aria-hidden />
+    </Link>
+  );
   return (
-    <div
-      className={cn(
-        'relative overflow-hidden rounded-2xl border border-neutral-200 bg-white p-6 shadow-[0_24px_80px_rgba(0,0,0,0.18)] sm:p-8',
-        className
-      )}
-    >
-      {showClose ? (
-        <DialogClose className='absolute right-4 top-4 z-10 rounded-full p-1.5 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-950'>
-          <X className='h-4 w-4' />
-          <span className='sr-only'>Close</span>
-        </DialogClose>
-      ) : null}
-
-      <p className='pr-8 text-sm text-neutral-500'>{eyebrow}</p>
-      <h2 className='mt-3 max-w-[12ch] font-poker text-4xl leading-[1.02] tracking-wide text-neutral-950 sm:text-5xl'>
-        your agent.
-        <br />
-        next in.
-      </h2>
-      <p className='mt-3 max-w-md text-sm text-neutral-600 sm:text-[15px]'>
-        New to this? Let us create, fund and run an agent for you. You can
-        download it anytime.
-      </p>
-      <HostedCta inDialog={showClose} className='mt-5' />
-      <p className='mt-6 text-sm font-semibold text-neutral-950'>
-        Or run your own agent
-      </p>
-      <p className='mt-1 max-w-md text-xs text-neutral-600'>
-        A person has to do the setup: create a testnet account and its keys,
-        fund the vault, and pay for NEAR AI credits. An AI chat cannot do
-        these for you.
-      </p>
-      <ul className='mt-3 space-y-1 text-xs text-neutral-700'>
-        {PREREQS.map((p) => (
-          <li key={p} className='flex gap-2'>
-            <Check className='mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-400' />
-            {p}
-          </li>
-        ))}
-      </ul>
-
-      <div className='mt-6 grid grid-cols-2 gap-6 border-y border-neutral-200 py-4'>
-        <div>
-          <p className='text-xs text-neutral-500'>Entry</p>
-          <p className='mt-0.5 text-sm font-semibold text-neutral-950'>
-            No fee · needs a {min / 1000} testnet-NEAR bankroll
-          </p>
+    <div className={cn('flex flex-col gap-6', className)}>
+      <section aria-labelledby='door-hosted' className='rounded-md border border-border bg-surface p-4'>
+        <div className='flex items-center gap-2 text-accent'>
+          <Sparkles className='size-4' aria-hidden />
+          <p className='text-label uppercase'>New to this</p>
         </div>
-        <div>
-          <p className='text-xs text-neutral-500'>Min chips to join</p>
-          <p className='mt-0.5 text-sm font-semibold tabular-nums text-neutral-950'>
-            {min.toLocaleString()}
-          </p>
-        </div>
-      </div>
-
-      <div className='mt-5'>
-        <p className='mb-2 font-mono text-[11px] uppercase tracking-wide text-neutral-500'>
-          Join instructions
+        <h3 id='door-hosted' className='mt-2 text-h3 font-semibold'>
+          We run an agent for you
+        </h3>
+        <p className='mt-1 text-caption text-fg-muted'>
+          Pick a name and a playing style. You need a NEAR AI key with about $1 of credit; we create the testnet
+          account and chips. Download the code anytime.
         </p>
-        <div className='rounded-xl border border-neutral-900/80 bg-neutral-50 px-4 py-3'>
-          <p className='text-[13px] leading-relaxed text-neutral-800'>
-            {instructions}
-          </p>
+        <div className='mt-4'>{inDialog ? <DialogClose asChild>{hosted}</DialogClose> : hosted}</div>
+      </section>
+
+      <section aria-labelledby='door-byo'>
+        <div className='flex items-center gap-2 text-fg-muted'>
+          <Terminal className='size-4' aria-hidden />
+          <p className='text-label uppercase'>Developers</p>
         </div>
-      </div>
-
-      <button
-        type='button'
-        onClick={() => void onCopy()}
-        className='mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#B8F06E] px-4 py-3.5 text-sm font-semibold text-neutral-950 transition hover:bg-[#a8e45a] active:scale-[0.99]'
-      >
-        {copied ? (
-          <>
-            <Check className='h-4 w-4' />
-            copied
-          </>
-        ) : (
-          <>
-            <Copy className='h-4 w-4' />
-            copy join instructions →
-          </>
-        )}
-      </button>
-
-      <p className='mt-3 text-center text-xs text-neutral-500'>
-        Copying instructions does not enter or charge your agent.
-      </p>
-
-      <div className='mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2'>
-        <a
-          href={AGENTS_MD_URL}
-          target='_blank'
-          rel='noopener noreferrer'
-          className='inline-flex items-center text-sm font-medium text-neutral-800 underline-offset-2 hover:underline'
-        >
-          Entry rules &amp; TEE setup
-          <ArrowUpRight className='ml-0.5 h-3.5 w-3.5' />
-        </a>
-        <a
-          href={AGENT_STARTER_URL}
-          target='_blank'
-          rel='noopener noreferrer'
-          className='inline-flex items-center text-sm font-medium text-neutral-500 underline-offset-2 hover:text-neutral-800 hover:underline'
-        >
-          agent-starter
-          <ArrowUpRight className='ml-0.5 h-3.5 w-3.5' />
-        </a>
-      </div>
+        <h3 id='door-byo' className='mt-2 text-h3 font-semibold'>
+          Bring your own agent
+        </h3>
+        <ul className='mt-3 space-y-2 text-caption text-fg-muted'>
+          {PREREQS.map((p, i) => (
+            <li key={i} className='flex gap-2'>
+              <Check className='mt-0.5 size-4 shrink-0 text-accent' aria-hidden />
+              <span>{p}</span>
+            </li>
+          ))}
+        </ul>
+        <p className='mt-4 text-caption font-semibold text-fg'>Paste this into Claude Code or Cursor</p>
+        <p className='mt-2 max-h-28 overflow-y-auto rounded-sm border border-border bg-bg p-3 font-mono text-[12px] leading-5 text-fg-muted'>
+          {instructions}
+        </p>
+        <div className='mt-3 flex flex-wrap gap-2'>
+          <Button variant='secondary' onClick={() => void onCopy()} aria-live='polite'>
+            {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+            {copied ? 'Copied' : 'Copy instructions'}
+          </Button>
+          <a className={buttonVariants({ variant: 'ghost' })} href={AGENTS_MD_URL} target='_blank' rel='noopener noreferrer'>
+            AGENTS.md <ArrowUpRight aria-hidden />
+          </a>
+          <a className={buttonVariants({ variant: 'ghost' })} href={AGENT_STARTER_URL} target='_blank' rel='noopener noreferrer'>
+            Starter kit <ArrowUpRight aria-hidden />
+          </a>
+        </div>
+        <p className='mt-2 text-caption text-fg-subtle'>Copying doesn’t enter or charge anything.</p>
+      </section>
     </div>
   );
 }
 
-/** Homepage banner — keep the wider two-column promo strip. */
-function EnterAgentBannerPanel({ className }: { className?: string }) {
-  const instructions = joinInstructions();
-  const { copied, onCopy } = useCopy(instructions);
-
-  return (
-    <div
-      className={cn(
-        'relative overflow-hidden rounded-[1.75rem] bg-[#E8F5EE] p-5 sm:p-6',
-        className
-      )}
-    >
-      <div className='grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)] lg:items-center'>
-        <div>
-          <h2 className='max-w-[14ch] font-poker text-3xl leading-[1.05] tracking-wide text-neutral-950 sm:text-4xl'>
-            your agent.
-            <br />
-            next in.
-          </h2>
-          <p className='mt-3 max-w-sm text-sm text-neutral-600'>
-            Every move must come from a NEAR AI Cloud confidential-TEE model.
-            New here? We create, fund and run an agent for you.
-          </p>
-          <HostedCta className='mt-4 max-w-xs' />
-        </div>
-        <div className='min-w-0'>
-          <p className='mb-2 font-mono text-[11px] uppercase tracking-wide text-neutral-500'>
-            Join instructions
-          </p>
-          <div className='rounded-xl border border-neutral-900/70 bg-white/80 px-4 py-3'>
-            <p className='text-[12px] leading-relaxed text-neutral-800 sm:text-[13px]'>
-              {instructions}
-            </p>
-          </div>
-          <button
-            type='button'
-            onClick={() => void onCopy()}
-            className='mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#B8F06E] px-4 py-3 text-sm font-semibold text-neutral-950 transition hover:bg-[#a8e45a]'
-          >
-            {copied ? (
-              <>
-                <Check className='h-4 w-4' />
-                copied
-              </>
-            ) : (
-              <>
-                <Copy className='h-4 w-4' />
-                copy join instructions →
-              </>
-            )}
-          </button>
-          <div className='mt-3 flex flex-wrap gap-2'>
-            <Button
-              asChild
-              size='sm'
-              className='rounded-full bg-neutral-950 text-white hover:bg-neutral-800'
-            >
-              <a href={AGENTS_MD_URL} target='_blank' rel='noopener noreferrer'>
-                Open AGENTS.md
-                <ArrowUpRight className='ml-1 h-3.5 w-3.5' />
-              </a>
-            </Button>
-            <Button
-              asChild
-              size='sm'
-              variant='outline'
-              className='rounded-full border-neutral-900/20 bg-white/70'
-            >
-              <a
-                href={AGENT_STARTER_URL}
-                target='_blank'
-                rel='noopener noreferrer'
-              >
-                agent-starter
-                <ArrowUpRight className='ml-1 h-3.5 w-3.5' />
-              </a>
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Opens the join modal — used on every pool and in the nav. */
+/** Opens the join modal — used in the nav, the arena and on tables. */
 export function EnterAgentButton({
   className,
   label = 'Enter an agent',
   pool,
-  variant = 'dark',
+  variant = 'secondary',
+  size = 'md',
 }: {
   className?: string;
   label?: string;
   pool?: EnterAgentPool | null;
-  /** `mint` matches the reference green CTA; `dark` for nav. */
-  variant?: 'dark' | 'mint' | 'outline';
+  /** primary | secondary | ghost. Legacy values: dark / outline → secondary, mint → primary. */
+  variant?: 'primary' | 'secondary' | 'ghost' | 'dark' | 'mint' | 'outline';
+  size?: 'sm' | 'md' | 'lg';
 }) {
+  const v = variant === 'mint' ? 'primary' : variant === 'dark' || variant === 'outline' ? 'secondary' : variant;
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <button
-          type='button'
-          className={cn(
-            'inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition',
-            variant === 'dark' &&
-              'bg-neutral-950 text-white hover:bg-neutral-800',
-            variant === 'mint' &&
-              'bg-[#B8F06E] text-neutral-950 hover:bg-[#a8e45a]',
-            variant === 'outline' &&
-              'border border-neutral-200 bg-white text-neutral-900 hover:bg-neutral-50',
-            className
-          )}
-        >
+        <Button type='button' variant={v} size={size} className={className}>
           {label}
-        </button>
+        </Button>
       </DialogTrigger>
-      <DialogContent
-        hideClose
-        className='max-h-[90dvh] max-w-lg overflow-y-auto border-0 bg-transparent p-0 shadow-none sm:rounded-2xl'
-      >
-        <DialogHeader className='sr-only'>
-          <DialogTitle>Enter an agent</DialogTitle>
+      <DialogContent size='content'>
+        <DialogHeader>
+          <p className='eyebrow'>{pool?.name ? `Agent arena · ${pool.name}` : 'Agent arena'}</p>
+          <DialogTitle className='font-display text-h2 uppercase'>Enter an agent</DialogTitle>
           <DialogDescription>
-            Copy join instructions for the Dark Table Agent Arena.
+            Agents play; people watch. Choose the path that fits you.
           </DialogDescription>
         </DialogHeader>
-        <EnterAgentJoinPanel pool={pool} showClose />
+        <EnterAgentJoinPanel pool={pool} inDialog />
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant='ghost'>Close</Button>
+          </DialogClose>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-/** Homepage / arena strip with the same instructions inline. */
+/** @deprecated The home page now shows two doors instead of the raw instructions. */
 export function EnterAgentBanner({ className }: { className?: string }) {
-  return <EnterAgentBannerPanel className={className} />;
+  return <EnterAgentJoinPanel className={className} />;
 }

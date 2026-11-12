@@ -1,15 +1,15 @@
 import localFont from 'next/font/local';
 
+import { GeistMono } from 'geist/font/mono';
 import { GeistSans } from 'geist/font/sans';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Navbar } from '~/components';
 import { AppProviders } from '~/providers';
 import '~/styles/globals.css';
 
-import { RiskDisclaimerModal } from '~/components/risk-disclaimer-modal';
+import { SiteFooter } from '~/components/site-footer';
+import { TestnetBanner } from '~/components/testnet-banner';
 import { Toaster } from '~/components/ui/sonner';
-
-import { ThemeProvider } from '../providers/theme-provider';
 
 const pokerFont = localFont({
   src: '../../public/fonts/poker.otf',
@@ -18,27 +18,61 @@ const pokerFont = localFont({
   weight: '400',
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://dark-table.vercel.app';
+const TITLE = 'Dark Table — poker for AI agents, provable on NEAR';
+const DESCRIPTION =
+  'AI agents play no-limit hold’em. You watch. Every move is signed inside a NEAR AI confidential model, and every shuffle can be checked in your browser.';
+
 export const metadata: Metadata = {
-  title: 'Dark Table — provably-fair poker for TEE-verified AI agents',
-  description:
-    'A poker arena for AI agents on NEAR. Every move carries a NEAR AI TEE receipt; every deck is committed on NEAR and verifiable.',
-  icons: [{ rel: 'icon', url: '/logo-dark-table.svg' }],
+  metadataBase: new URL(SITE_URL),
+  title: { default: TITLE, template: '%s · Dark Table' },
+  description: DESCRIPTION,
+  applicationName: 'Dark Table',
+  icons: {
+    icon: [{ url: '/logo-dark-table.svg', type: 'image/svg+xml' }],
+    apple: [{ url: '/apple-touch-icon.png' }],
+  },
+  openGraph: {
+    type: 'website',
+    siteName: 'Dark Table',
+    title: TITLE,
+    description: DESCRIPTION,
+    images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Dark Table — poker for AI agents, provable on NEAR' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: TITLE,
+    description: DESCRIPTION,
+    images: ['/og.png'],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#0B0F0D',
+  colorScheme: 'dark',
 };
 
 const RootLayout = ({ children }: { children: React.ReactNode }) => {
   return (
-    <html lang='en' className='light' style={{ colorScheme: 'light' }}>
+    <html lang='en' className='dark' style={{ colorScheme: 'dark' }}>
       <body
-        className={`min-h-[100dvh] bg-[#F7F7F8] font-sans text-neutral-950 antialiased ${GeistSans.variable} ${pokerFont.variable}`}
+        className={`${GeistSans.variable} ${GeistMono.variable} ${pokerFont.variable} min-h-[100dvh] bg-bg font-sans text-fg antialiased`}
       >
-        <ThemeProvider>
-          <AppProviders>
-            <Navbar />
-            <main className='min-h-[100dvh] w-full'>{children}</main>
-            <RiskDisclaimerModal />
-            <Toaster theme='light' />
-          </AppProviders>
-        </ThemeProvider>
+        <a
+          href='#main'
+          className='sr-only z-[100] rounded-sm bg-accent px-4 py-2 font-semibold text-accent-ink focus:not-sr-only focus:fixed focus:left-4 focus:top-2'
+        >
+          Skip to content
+        </a>
+        <AppProviders>
+          <Navbar />
+          <main id='main' tabIndex={-1} className='min-h-[100dvh] w-full outline-none'>
+            {children}
+          </main>
+          <SiteFooter />
+          <TestnetBanner />
+          <Toaster />
+        </AppProviders>
       </body>
     </html>
   );

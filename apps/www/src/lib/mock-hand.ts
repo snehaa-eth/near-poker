@@ -3,8 +3,68 @@
  * (blinds → raises → flop → check-raise → turn all-in → run-out → showdown), looping.
  * Hole cards stay hidden (-1) until the hand is complete, exactly like the real view.
  */
-import type { PublicAction, PublicGameView } from './api';
-import { mockArenaView } from './arena';
+import type { ArenaMoveRecord, PublicAction, PublicGameView } from './api';
+import { mockArenaView, receiptUrl } from './arena';
+
+/**
+ * The arena only accepts moves from NEAR AI Cloud confidential (TEE) models, so the demo table
+ * seats TEE models only (the shared fixture still lists older non-TEE ids).
+ */
+export const MOCK_TEE_MODEL = 'Qwen/Qwen3.6-35B-A3B-FP8';
+/** Lifetime verified moves per seat before this session's hands. */
+const MOVES_BEFORE = [512, 401, 266, 190, 144, 88];
+const MOCK_TABLE_NAME = 'Arena #1';
+
+const hexOf = (seed: number, bytes: number) =>
+  Array.from({ length: bytes }, (_, i) => ((seed * 31 + i * 17) % 256).toString(16).padStart(2, '0')).join('');
+
+/** Synthetic TEE receipts for the mock table's public action log (one per agent decision). */
+export function mockReceipts(view: PublicGameView): ArenaMoveRecord[] {
+  const handId = view.fairness?.handId ?? 'demo';
+  const seed = handId.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  return (view.actions ?? []).map((a, i) => {
+    const p = view.players.find((x) => x.id === a.playerId);
+    const model = p?.agent?.model ?? MOCK_TEE_MODEL;
+    const n = seed * 13 + i;
+    return {
+      handId,
+      gameId: view.gameId,
+      playerId: a.playerId,
+      nickname: p?.nickname,
+      action: a.type,
+      amount: a.amount ?? null,
+      challenge: hexOf(n + 1, 16),
+      completionId: `chatcmpl-${hexOf(n + 7, 8)}`,
+      model,
+      signingAddress: hexOf(n + 3, 32),
+      signedText: `${model}:${hexOf(n + 11, 32)}:${hexOf(n + 13, 32)}`,
+      signature: hexOf(n + 5, 64),
+      verifiedAt: new Date(Date.UTC(2026, 10, 11, 12, 0, i * 7)).toISOString(),
+    };
+  });
+}
+
+/** Seat agents with TEE models and move counts that grow with the moves made this hand. */
+function withTeeAgents(view: PublicGameView, handNo: number): PublicGameView {
+  const receipts = mockReceipts(view);
+  return {
+    ...view,
+    name: MOCK_TABLE_NAME,
+    players: view.players.map((p, i) => {
+      const mine = receipts.filter((r) => r.playerId === p.id);
+      const last = mine[mine.length - 1];
+      return {
+        ...p,
+        agent: {
+          model: MOCK_TEE_MODEL,
+          // ~3 decisions per seat per earlier hand in this session + this hand's moves.
+          movesVerified: (MOVES_BEFORE[i] ?? 50) + (handNo - 1) * 3 + mine.length,
+          ...(last ? { lastReceiptUrl: receiptUrl(last) } : {}),
+        },
+      };
+    }),
+  };
+}
 
 type Step =
   | { kind: 'act'; seat: number; type: 'fold' | 'check' | 'call' | 'bet' | 'raise' | 'all-in'; to?: number }
@@ -119,6 +179,7 @@ export function mockHandFrames(gameId: string, handNo: number): Array<{ view: Pu
   };
 
   const frames: Array<{ view: PublicGameView; ms: number }> = [{ view: snapshot(nextActor(0)), ms: 1400 }];
+  const tee = (v: PublicGameView) => withTeeAgents(v, handNo);
   for (let j = 0; j < SCRIPT.length; j++) {
     const s = SCRIPT[j]!;
     if (s.kind === 'act') {
@@ -182,11 +243,48 @@ export function mockHandFrames(gameId: string, handNo: number): Array<{ view: Pu
       });
     }
   }
-  return frames;
+  return frames.map((f) => ({ ...f, view: tee(f.view) }));
+}
+
+/** `mock-arena-2?mock=1`: a table still seating agents (2 of 6, between hands). */
+export function mockWaitingView(gameId: string): PublicGameView {
+  const base = mockArenaView(gameId);
+  const players = base.players.slice(0, 2).map((p) => ({
+    ...p,
+    chipsInPot: 0,
+    folded: false,
+    holeCards: [],
+    agent: { model: MOCK_TEE_MODEL, movesVerified: 0 },
+  }));
+  return {
+    ...base,
+    name: 'Arena #2',
+    status: 'waiting',
+    round: 'Ante',
+    roundLabel: 'Ante',
+    street: 'waiting',
+    players,
+    communityCards: [-1, -1, -1, -1, -1],
+    pot: 0,
+    highestBet: 0,
+    stacksByPlayerId: Object.fromEntries(players.map((p) => [p.id, 1500])),
+    nextSeat: -1,
+    nextPlayerId: null,
+    nextPlayerNickname: null,
+    gameStarted: false,
+    totalPlayers: players.length,
+    fairness: undefined,
+    smallBlind: 5,
+    bigBlind: 10,
+  };
 }
 
 /** Stream scripted hands forever. Returns a stop function. */
 export function startMockHandLoop(gameId: string, onView: (v: PublicGameView) => void) {
+  if (gameId === 'mock-arena-2') {
+    onView(mockWaitingView(gameId));
+    return () => {};
+  }
   let handNo = 1;
   let frames = mockHandFrames(gameId, handNo);
   let i = 0;

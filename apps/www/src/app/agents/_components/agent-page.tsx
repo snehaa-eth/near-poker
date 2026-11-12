@@ -13,7 +13,17 @@ import {
 } from '~/lib/api';
 import { cn } from '~/lib/utils';
 
-import { ArrowUpRight, Download, Loader2, Play, Square, Trash2 } from 'lucide-react';
+import { AgentAvatar } from '~/components/agent-avatar';
+import { StatusPill } from '~/components/ui/badge';
+import { Button, buttonVariants } from '~/components/ui/button';
+import { Card } from '~/components/ui/card';
+import { inputClass } from '~/components/ui/input';
+import { Skeleton } from '~/components/ui/skeleton';
+import { EmptyState, ErrorState, Page } from '~/components/ui/states';
+
+import { ArrowLeft, ArrowRight, ArrowUpRight, Bot, Download, Loader2, Play, Square, Trash2 } from 'lucide-react';
+
+import { AGENT_STATE } from './agents-list';
 
 import { forgetAgent, loadSavedAgents, saveAgent } from './saved-agents';
 
@@ -21,22 +31,16 @@ type View = HostedAgentPublic | HostedAgentOwner;
 const isOwner = (v: View | null): v is HostedAgentOwner => Boolean(v && 'owner' in v && v.owner);
 
 function StateBadge({ v }: { v: View }) {
-  const map: Record<string, [string, string]> = {
-    playing: ['bg-[#B8F06E] text-neutral-950', 'playing'],
-    queued: ['bg-sky-100 text-sky-900', 'waiting for a table'],
-    idle: ['bg-neutral-100 text-neutral-700', 'idle'],
-    error: ['bg-red-100 text-red-800', 'needs attention'],
-    deleted: ['bg-neutral-200 text-neutral-600', 'deleted'],
-  };
-  const [cls, text] = map[v.state] ?? map.idle!;
-  return <span className={cn('inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold', cls)}>{text}</span>;
+  const st = AGENT_STATE[v.state] ?? AGENT_STATE.idle;
+  const label = v.state === 'queued' ? 'Waiting for a table' : v.state === 'error' ? 'Needs attention' : st.label;
+  return <StatusPill status={st.status}>{label}</StatusPill>;
 }
 
 function Stat({ label, value, tone }: { label: string; value: React.ReactNode; tone?: 'pos' | 'neg' }) {
   return (
-    <div className='rounded-xl border border-neutral-200 bg-white px-4 py-3'>
-      <p className='text-xs text-neutral-500'>{label}</p>
-      <p className={cn('mt-1 text-xl font-semibold tabular-nums', tone === 'pos' && 'text-emerald-700', tone === 'neg' && 'text-red-700')}>{value}</p>
+    <div className='rounded-md border border-border bg-surface px-4 py-3'>
+      <p className='eyebrow'>{label}</p>
+      <p className={cn('mt-1 text-h3 font-semibold tabular-nums', tone === 'pos' && 'text-positive', tone === 'neg' && 'text-negative')}>{value}</p>
     </div>
   );
 }
@@ -68,11 +72,11 @@ export function AgentPage({ id, token: tokenParam }: { id: string; token: string
     } catch (e) {
       const msg = (e as Error).message;
       if (msg === 'BadOwnerToken' && token) {
-        setError('This owner link is not valid for this agent. Showing the public profile.');
+        setNotice('This manage link isn’t valid for this agent, so you’re seeing the public profile.');
         setToken(null);
         return;
       }
-      setError(msg === 'NotFound' ? 'No agent here (it may have been deleted).' : msg);
+      setError(msg === 'NotFound' ? 'NotFound' : 'Offline');
     }
   }, [id, token]);
 
@@ -97,14 +101,35 @@ export function AgentPage({ id, token: tokenParam }: { id: string; token: string
   }
 
   if (!view) {
+    if (error === 'NotFound') {
+      return (
+        <Page narrow>
+          <h1 className='font-display text-h1-sm uppercase sm:text-h1'>Agent not found</h1>
+          <EmptyState
+            className='mt-6'
+            icon={<Bot />}
+            title='There’s no agent at this link'
+            actions={
+              <>
+                <Link href='/agents' className={buttonVariants({ variant: 'secondary' })}>
+                  All agents
+                </Link>
+                <Link href='/agents/new' className={buttonVariants({ variant: 'primary' })}>
+                  Create one
+                </Link>
+              </>
+            }
+          >
+            It may have been deleted, or the link is mistyped.
+          </EmptyState>
+        </Page>
+      );
+    }
     return (
-      <div className='mx-auto max-w-3xl px-4 pt-32 text-sm text-neutral-500'>
-        {error ?? (
-          <span className='inline-flex items-center gap-2'>
-            <Loader2 className='h-4 w-4 animate-spin' /> loading agent…
-          </span>
-        )}
-      </div>
+      <Page narrow>
+        <h1 className='sr-only'>Hosted agent</h1>
+        {error ? <ErrorState onRetry={() => void refresh()} /> : <Skeleton className='h-64 rounded-md' />}
+      </Page>
     );
   }
 
@@ -113,42 +138,45 @@ export function AgentPage({ id, token: tokenParam }: { id: string; token: string
   const running = view.state === 'playing' || view.state === 'queued';
 
   return (
-    <div className='mx-auto w-full max-w-3xl px-4 pb-24 pt-28 sm:pt-32'>
-      <p className='text-sm text-neutral-500'>{owner ? 'Your hosted agent' : 'Hosted agent'}</p>
-      <div className='mt-2 flex flex-wrap items-center gap-3'>
-        <h1 className='font-poker text-5xl tracking-wide text-neutral-950'>{view.name}</h1>
+    <Page narrow>
+      <Link href='/agents' className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), '-ml-3 mb-4')}>
+        <ArrowLeft aria-hidden /> All agents
+      </Link>
+      <p className='eyebrow'>{owner ? 'Your hosted agent' : 'Hosted agent'}</p>
+      <div className='mt-3 flex flex-wrap items-center gap-4'>
+        <AgentAvatar name={view.name} size={56} active={view.state === 'playing'} />
+        <h1 className='min-w-0 break-words text-h1-sm font-semibold sm:text-h1'>{view.name}</h1>
         <StateBadge v={view} />
       </div>
-      <p className='mt-2 text-sm text-neutral-600'>
-        {view.personaLabel} · <span className='font-mono text-xs'>{view.model}</span> ·{' '}
+      <p className='mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-fg-muted'>
+        <span>{view.personaLabel}</span>
+        <span aria-hidden>·</span>
+        <span className='font-mono text-[12px]'>{view.model}</span>
+        <span aria-hidden>·</span>
         {view.walletUrl ? (
-          <a href={view.walletUrl} target='_blank' rel='noopener noreferrer' className='inline-flex items-center font-mono text-xs underline'>
+          <a href={view.walletUrl} target='_blank' rel='noopener noreferrer' className='inline-flex min-w-0 items-center gap-1 break-all font-mono text-[12px] text-fg-muted hover:text-accent'>
             {view.walletAddress}
-            <ArrowUpRight className='ml-0.5 h-3 w-3' />
+            <ArrowUpRight className='size-3 shrink-0' aria-hidden />
           </a>
         ) : (
-          <span className='font-mono text-xs'>{view.walletAddress}</span>
+          <span className='break-all font-mono text-[12px]'>{view.walletAddress}</span>
         )}
       </p>
 
       {view.state === 'playing' && view.gameId ? (
-        <Link
-          href={`/game/${view.gameId}`}
-          className='mt-4 inline-flex items-center rounded-full bg-neutral-950 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800'
-        >
-          Watch it play at table {view.gameId.slice(0, 8)} →
+        <Link href={`/game/${view.gameId}`} className={cn(buttonVariants({ variant: 'primary', size: 'lg' }), 'mt-6')}>
+          Watch it play <ArrowRight aria-hidden />
         </Link>
       ) : null}
       {owner && view.state === 'queued' ? (
-        <p className='mt-4 text-sm text-neutral-600'>Waiting in the arena queue for at least one other agent…</p>
+        <p className='mt-4 text-caption text-fg-muted'>In the arena queue, waiting for at least one other agent…</p>
       ) : null}
-      {error ? <p className='mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800'>{error}</p> : null}
 
-      <div className='mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4'>
-        {owner ? <Stat label='Chips' value={owner.chips ?? '–'} /> : null}
-        <Stat label='Hands played' value={view.stats.hands} />
-        <Stat label='Net chips' value={`${net > 0 ? '+' : ''}${net}`} tone={net > 0 ? 'pos' : net < 0 ? 'neg' : undefined} />
-        <Stat label='TEE-verified moves' value={view.stats.movesVerified} />
+      <div className='mt-8 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-4'>
+        {owner ? <Stat label='Chips' value={owner.chips ?? '—'} /> : null}
+        <Stat label='Hands' value={view.stats.hands} />
+        <Stat label='Net chips' value={`${net > 0 ? '+' : net < 0 ? '−' : ''}${Math.abs(net)}`} tone={net > 0 ? 'pos' : net < 0 ? 'neg' : undefined} />
+        <Stat label='Verified moves' value={view.stats.movesVerified} />
       </div>
 
       {owner ? (
@@ -166,14 +194,17 @@ export function AgentPage({ id, token: tokenParam }: { id: string; token: string
           }}
         />
       ) : (
-        <p className='mt-8 text-xs text-neutral-500'>
-          Want your own?{' '}
-          <Link href='/agents/new' className='font-medium text-neutral-800 underline'>
-            Create an agent in 1 minute →
-          </Link>
-        </p>
+        <>
+          {notice ? <p className='mt-6 rounded-sm border border-warning/40 bg-warning/10 px-4 py-3 text-caption'>{notice}</p> : null}
+          <p className='mt-8 text-caption text-fg-subtle'>
+            Want your own?{' '}
+            <Link href='/agents/new' className='link font-semibold'>
+              Create an agent
+            </Link>
+          </p>
+        </>
       )}
-    </div>
+    </Page>
   );
 }
 
@@ -204,9 +235,6 @@ function OwnerPanel({
   const [newKey, setNewKey] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const deleted = owner.state === 'deleted';
-  const btn =
-    'inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50';
-
   async function download() {
     const blob = await hostedApi.download(owner.agentId, token, includeKey);
     const url = URL.createObjectURL(blob);
@@ -219,115 +247,100 @@ function OwnerPanel({
 
   return (
     <>
-      <div className='mt-6 flex flex-wrap gap-2'>
+      <div className='mt-8 flex flex-wrap gap-2'>
         {!deleted ? (
           running ? (
-            <button
-              type='button'
+            <Button
+              variant='secondary'
               disabled={busy !== null}
               onClick={() => void act('stop', () => hostedApi.stop(owner.agentId, token, owner.statusDetail === 'stopping after this hand'), 'Leaving after this hand. Press Stop again to stop right away.')}
-              className={cn(btn, 'bg-neutral-950 text-white hover:bg-neutral-800')}
             >
-              {busy === 'stop' ? <Loader2 className='h-4 w-4 animate-spin' /> : <Square className='h-4 w-4' />}
+              {busy === 'stop' ? <Loader2 className='animate-spin' aria-hidden /> : <Square aria-hidden />}
               Stop
-            </button>
+            </Button>
           ) : (
-            <button
-              type='button'
-              disabled={busy !== null}
-              onClick={() => void act('play', () => hostedApi.play(owner.agentId, token))}
-              className={cn(btn, 'bg-[#B8F06E] text-neutral-950 hover:bg-[#a8e45a]')}
-            >
-              {busy === 'play' ? <Loader2 className='h-4 w-4 animate-spin' /> : <Play className='h-4 w-4' />}
+            <Button disabled={busy !== null} onClick={() => void act('play', () => hostedApi.play(owner.agentId, token))}>
+              {busy === 'play' ? <Loader2 className='animate-spin' aria-hidden /> : <Play aria-hidden />}
               {owner.runs > 0 ? 'Play again' : 'Play'}
-            </button>
+            </Button>
           )
         ) : null}
         {!deleted ? (
-          <button type='button' onClick={() => setEditing((e) => !e)} className={cn(btn, 'border border-neutral-300 bg-white hover:bg-neutral-50')}>
-            Edit personality
-          </button>
+          <Button variant='secondary' onClick={() => setEditing((e) => !e)} aria-expanded={editing}>
+            Edit playing style
+          </Button>
         ) : null}
-        <button
-          type='button'
-          disabled={busy !== null}
-          onClick={() => void act('download', download)}
-          className={cn(btn, 'border border-neutral-300 bg-white hover:bg-neutral-50')}
-        >
-          {busy === 'download' ? <Loader2 className='h-4 w-4 animate-spin' /> : <Download className='h-4 w-4' />}
+        <Button variant='secondary' disabled={busy !== null} onClick={() => void act('download', download)}>
+          {busy === 'download' ? <Loader2 className='animate-spin' aria-hidden /> : <Download aria-hidden />}
           Download my agent
-        </button>
+        </Button>
       </div>
-      <label className='mt-3 flex items-center gap-2 text-xs text-neutral-600'>
-        <input type='checkbox' checked={includeKey} onChange={(e) => setIncludeKey(e.target.checked)} />
-        include my NEAR AI key in the download (otherwise you paste it into .env yourself)
+      <label className='mt-3 flex min-h-11 items-center gap-3 text-caption text-fg-muted sm:min-h-0'>
+        <input type='checkbox' className='size-4 accent-[var(--accent)]' checked={includeKey} onChange={(e) => setIncludeKey(e.target.checked)} />
+        Include my NEAR AI key in the download (otherwise paste it into .env yourself)
       </label>
 
-      {notice ? <p className='mt-3 rounded-xl bg-neutral-100 px-4 py-2.5 text-sm text-neutral-800'>{notice}</p> : null}
+      {notice ? (
+        <p role='status' className='mt-4 rounded-sm border border-border bg-surface-2 px-4 py-3 text-caption'>
+          {notice}
+        </p>
+      ) : null}
 
-      <div className='mt-4 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-700'>
-        <span className='font-semibold text-neutral-950'>Status:</span>{' '}
-        {owner.state === 'idle' && owner.statusDetail === 'budget used'
-          ? `idle: its ${owner.maxCalls} AI calls for this run are used. Press Play again for another run.`
-          : owner.state === 'idle' && owner.statusDetail === 'out of chips'
-            ? 'idle: out of chips. Download the agent and deposit more test NEAR to keep playing.'
-            : `${owner.state}${owner.statusDetail ? ` (${owner.statusDetail})` : ''}`}
+      <Card className='mt-6 p-4 sm:p-4'>
+        <p className='text-caption text-fg-muted'>
+          <span className='font-semibold text-fg'>Status: </span>
+          {owner.state === 'idle' && owner.statusDetail === 'budget used'
+            ? `Idle. Its ${owner.maxCalls} AI calls for this run are used. Press Play again for another run.`
+            : owner.state === 'idle' && owner.statusDetail === 'out of chips'
+              ? 'Idle. Out of chips. Download the agent and deposit more test NEAR to keep playing.'
+              : `${owner.state}${owner.statusDetail ? ` (${owner.statusDetail})` : ''}`}
+        </p>
         {owner.lastRun ? (
-          <span className='block text-xs text-neutral-500'>
+          <p className='mt-1 text-caption text-fg-subtle'>
             Last run: {owner.lastRun.hands} hands, {owner.lastRun.moves} moves, {owner.lastRun.llmCalls} AI calls.
-          </span>
+          </p>
         ) : null}
-      </div>
+      </Card>
 
       {editing ? (
-        <div className='mt-4 rounded-2xl border border-neutral-200 bg-white p-5'>
-          <p className='text-sm font-semibold'>Edit personality</p>
-          <div className='mt-3 flex flex-wrap gap-2'>
+        <Card className='mt-4'>
+          <p className='font-semibold'>Edit playing style</p>
+          <div className='mt-3 flex flex-wrap gap-2' role='radiogroup' aria-label='Playing style'>
             {(config?.personas ?? []).map((p) => (
-              <button
+              <Button
                 key={p.id}
-                type='button'
+                role='radio'
+                aria-checked={persona === p.id}
+                variant='secondary'
+                size='sm'
                 onClick={() => setPersona(p.id)}
-                className={cn('rounded-full border px-3 py-1.5 text-sm', persona === p.id ? 'border-neutral-950 bg-neutral-950 text-white' : 'border-neutral-200')}
+                className={cn(persona === p.id && 'border-accent bg-accent-soft text-fg')}
               >
                 {p.label}
-              </button>
+              </Button>
             ))}
           </div>
           {persona === 'custom' ? (
             <textarea
-              aria-label='Custom personality'
+              aria-label='Custom playing style'
               value={custom}
               maxLength={config?.customMax ?? 600}
               onChange={(e) => setCustom(e.target.value)}
-              className='mt-3 min-h-[100px] w-full rounded-xl border border-neutral-200 p-3 text-sm outline-none focus:border-neutral-900'
+              className={cn(inputClass, 'mt-3 h-auto min-h-[100px] py-2')}
             />
           ) : null}
-          <div className='mt-3 grid gap-3 sm:grid-cols-2'>
-            <label className='text-xs text-neutral-600'>
+          <div className='mt-4 grid gap-4 sm:grid-cols-2'>
+            <label className='flex flex-col gap-2 text-caption font-semibold'>
               Max AI calls per run
-              <input
-                type='number'
-                min={4}
-                max={500}
-                value={maxCalls}
-                onChange={(e) => setMaxCalls(Number(e.target.value) || 40)}
-                className='mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm'
-              />
+              <input type='number' min={4} max={500} value={maxCalls} onChange={(e) => setMaxCalls(Number(e.target.value) || 40)} className={cn(inputClass, 'tabular-nums')} />
             </label>
-            <label className='text-xs text-neutral-600'>
+            <label className='flex flex-col gap-2 text-caption font-semibold'>
               New NEAR AI key (optional)
-              <input
-                type='password'
-                value={newKey}
-                onChange={(e) => setNewKey(e.target.value)}
-                autoComplete='off'
-                className='mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm'
-              />
+              <input type='password' value={newKey} onChange={(e) => setNewKey(e.target.value)} autoComplete='off' className={inputClass} />
             </label>
           </div>
-          <button
-            type='button'
+          <Button
+            className='mt-4'
             disabled={busy !== null}
             onClick={() =>
               void act(
@@ -345,55 +358,58 @@ function OwnerPanel({
                 running ? 'Saved. Changes apply from the next run.' : 'Saved.'
               )
             }
-            className='mt-4 rounded-full bg-neutral-950 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800'
           >
             Save
-          </button>
-        </div>
+          </Button>
+        </Card>
       ) : null}
 
-      <div className='mt-6'>
-        <p className='mb-2 font-mono text-[11px] uppercase tracking-wide text-neutral-500'>Recent log</p>
-        <pre className='max-h-80 overflow-auto rounded-xl bg-neutral-950 p-4 font-mono text-[11.5px] leading-relaxed text-neutral-200'>
+      <section className='mt-8' aria-labelledby='log-h'>
+        <h2 id='log-h' className='eyebrow mb-2'>
+          Recent log
+        </h2>
+        <pre tabIndex={0} className='max-h-80 overflow-auto rounded-sm border border-border bg-bg p-4 font-mono text-[12px] leading-5 text-fg-muted'>
           {owner.logs.length ? owner.logs.join('\n') : 'No output yet. Press Play.'}
         </pre>
-      </div>
+      </section>
 
-      <div className='mt-6 grid gap-3 sm:grid-cols-2'>
-        <div className='rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-700'>
-          <p className='font-semibold text-neutral-950'>Withdraw chips</p>
-          <p className='mt-1 text-xs leading-relaxed'>
-            Chips live in the table-vault contract under your agent&apos;s wallet ({owner.walletAddress}). Download your agent, then call{' '}
-            <code className='rounded bg-neutral-100 px-1'>withdraw({'{'}amount{'}'})</code> on the vault from that account (not possible mid-hand).
-            It is testnet NEAR: it has no real-money value.
+      <div className='mt-8 grid gap-4 sm:grid-cols-2'>
+        <Card className='p-4 sm:p-4'>
+          <p className='font-semibold'>Withdraw chips</p>
+          <p className='mt-1 text-caption text-fg-muted'>
+            Chips live in the table-vault contract under your agent’s wallet ({owner.walletAddress}). Download your agent,
+            then call <code className='rounded-xs bg-surface-3 px-1 font-mono text-[12px]'>withdraw({'{'}amount{'}'})</code> on the vault from that
+            account (not mid-hand). It’s testnet NEAR with no real-money value.
           </p>
-        </div>
-        <div className='rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-700'>
-          <p className='font-semibold text-neutral-950'>Delete agent</p>
-          <p className='mt-1 text-xs leading-relaxed'>Stops it and removes its public profile. This link still lets you download the wallet.</p>
+        </Card>
+        <Card className='p-4 sm:p-4'>
+          <p className='font-semibold'>Delete agent</p>
+          <p className='mt-1 text-caption text-fg-muted'>Stops it and removes its public profile. This link still lets you download the wallet.</p>
           {!deleted ? (
             confirmDelete ? (
               <div className='mt-3 flex gap-2'>
-                <button
-                  type='button'
-                  onClick={() => void act('delete', async () => {
-                    await hostedApi.remove(owner.agentId, token);
-                  }).then(onDeleted)}
-                  className='inline-flex items-center gap-1 rounded-full bg-red-600 px-3 py-1.5 text-xs font-semibold text-white'
+                <Button
+                  variant='danger'
+                  size='sm'
+                  onClick={() =>
+                    void act('delete', async () => {
+                      await hostedApi.remove(owner.agentId, token);
+                    }).then(onDeleted)
+                  }
                 >
-                  <Trash2 className='h-3.5 w-3.5' /> Yes, delete
-                </button>
-                <button type='button' onClick={() => setConfirmDelete(false)} className='rounded-full border px-3 py-1.5 text-xs'>
+                  <Trash2 aria-hidden /> Yes, delete
+                </Button>
+                <Button variant='ghost' size='sm' onClick={() => setConfirmDelete(false)}>
                   Cancel
-                </button>
+                </Button>
               </div>
             ) : (
-              <button type='button' onClick={() => setConfirmDelete(true)} className='mt-3 rounded-full border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50'>
+              <Button variant='danger' size='sm' className='mt-3' onClick={() => setConfirmDelete(true)}>
                 Delete…
-              </button>
+              </Button>
             )
           ) : null}
-        </div>
+        </Card>
       </div>
     </>
   );

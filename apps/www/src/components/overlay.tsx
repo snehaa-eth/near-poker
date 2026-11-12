@@ -8,10 +8,10 @@ export const Overlay = ({
   ...props
 }: ComponentProps<'div'>) => {
   return (
-    <div className='fixed inset-0 z-50 flex items-center justify-center bg-white/70 backdrop-blur-sm'>
+    <div className='fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] backdrop-blur-sm'>
       <div
         className={cn(
-          'w-full max-w-md rounded-[2rem] border border-neutral-200 bg-white p-8 shadow-xl',
+          'w-full max-w-md rounded-lg border border-border-strong bg-surface-2 p-8 text-fg shadow-e3',
           className
         )}
         {...props}

@@ -5,11 +5,11 @@ const MODEL = 'Qwen/Qwen3.6-35B-A3B-FP8';
 const agents = [
   ['nightowl.testnet', 'NightOwl', MODEL],
   ['tightaggro.testnet', 'TightAggro', MODEL],
-  ['bluff-bot.testnet', 'BluffBot', 'deepseek-ai/DeepSeek-V3.1'],
+  ['bluff-bot.testnet', 'BluffBot', MODEL],
   ['gto-ish.testnet', 'GTO-ish', MODEL],
-  ['calling-station.testnet', 'CallingStation', 'zai-org/GLM-4.6'],
+  ['calling-station.testnet', 'CallingStation', MODEL],
   ['river-rat.testnet', 'RiverRat', MODEL],
-  ['the-nit.testnet', 'TheNit', 'deepseek-ai/DeepSeek-V3.1'],
+  ['the-nit.testnet', 'TheNit', MODEL],
 ] as const;
 
 export type MockState = 'scheduled' | 'live' | 'ended';
@@ -18,10 +18,10 @@ export function mockEventSummaries(): ArenaEventSummary[] {
   const now = Date.now();
   const iso = (ms: number) => new Date(ms).toISOString();
   return [
-    { eventId: 'friday-night-arena', name: 'Friday Night Arena', description: 'Six-max agents, 45 minutes, TEE moves only.', prize: '50 NEAR to the top agent', startsAt: iso(now - 20 * 60_000), endsAt: iso(now + 25 * 60_000), durationMin: 45, maxAgents: 24, status: 'live', registered: 7, startedAt: iso(now - 20 * 60_000), endedAt: null },
+    { eventId: 'friday-night-arena', name: 'Friday Night Arena', description: 'Six-max agents, 45 minutes, TEE moves only.', prize: '50 testnet NEAR to the top agent', startsAt: iso(now - 20 * 60_000), endsAt: iso(now + 25 * 60_000), durationMin: 45, maxAgents: 24, status: 'live', registered: 7, startedAt: iso(now - 20 * 60_000), endedAt: null },
     { eventId: 'hackathon-showdown', name: 'NEAR Hackathon Showdown', description: 'Bring your agent before judging.', prize: null, startsAt: iso(now + 26 * 3600_000 + 14 * 60_000), endsAt: iso(now + 26.5 * 3600_000), durationMin: 30, maxAgents: 24, status: 'scheduled', registered: 4, startedAt: null, endedAt: null },
     { eventId: 'midnight-micro', name: 'Midnight Micro Stakes', description: '', prize: null, startsAt: iso(now + 3 * 86400_000), endsAt: iso(now + 3 * 86400_000 + 30 * 60_000), durationMin: 30, maxAgents: 12, status: 'scheduled', registered: 0, startedAt: null, endedAt: null },
-    { eventId: 'opening-night', name: 'Opening Night', description: '', prize: '20 NEAR', startsAt: iso(now - 2 * 86400_000), endsAt: iso(now - 2 * 86400_000 + 30 * 60_000), durationMin: 30, maxAgents: 24, status: 'ended', registered: 9, startedAt: iso(now - 2 * 86400_000), endedAt: iso(now - 2 * 86400_000 + 30 * 60_000) },
+    { eventId: 'opening-night', name: 'Opening Night', description: '', prize: '20 testnet NEAR', startsAt: iso(now - 2 * 86400_000), endsAt: iso(now - 2 * 86400_000 + 30 * 60_000), durationMin: 30, maxAgents: 24, status: 'ended', registered: 9, startedAt: iso(now - 2 * 86400_000), endedAt: iso(now - 2 * 86400_000 + 30 * 60_000) },
   ];
 }
 
@@ -54,7 +54,7 @@ export function mockEventDetail(eventId: string, state: MockState): ArenaEventDe
     name: eventId === 'friday-night-arena' || eventId.startsWith('mock') ? 'Friday Night Arena' : eventId.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
     description:
       'Six-max No-Limit Hold\'em for AI agents. Every move is produced by a NEAR AI Cloud confidential-TEE model and every deck is committed on NEAR before the deal. 45 minutes, highest net chips wins.',
-    prize: '50 NEAR to the top agent',
+    prize: '50 testnet NEAR to the top agent',
     startsAt: iso(start),
     endsAt: iso(start + 45 * 60_000),
     durationMin: 45,

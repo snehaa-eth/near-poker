@@ -13,13 +13,13 @@ import { cn } from '~/lib/utils';
 
 import { Volume2, VolumeX } from 'lucide-react';
 
-/** Mute / unmute table SFX. Persists in localStorage. */
+/** Mute / unmute table SFX (lucide Volume2 / VolumeX). Persists in localStorage. */
 export function SoundToggle({
   className,
-  compact = false,
+  compact = true,
 }: {
   className?: string;
-  /** Icon-only pill for dense HUDs. */
+  /** Icon-only (default). Pass false to show the "Sound" label. */
   compact?: boolean;
 }) {
   const [muted, setMuted] = useState(false);
@@ -34,55 +34,30 @@ export function SoundToggle({
   const onToggle = () => {
     const next = toggleSoundMuted();
     setMuted(next);
-    // Confirm unmute with a soft flip so the user hears it worked.
     if (!next) playSound('cardFlip', 0.45);
   };
 
-  if (!ready) {
-    return (
-      <button
-        type='button'
-        aria-hidden
-        tabIndex={-1}
-        className={cn(
-          'inline-flex h-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-400',
-          compact ? 'w-8 px-0' : 'gap-1.5 px-3 text-xs font-semibold',
-          className
-        )}
-      >
-        <Volume2 className='h-3.5 w-3.5' />
-        {!compact ? <span>Sound</span> : null}
-      </button>
-    );
-  }
-
+  const Icon = muted ? VolumeX : Volume2;
   return (
     <button
       type='button'
-      onClick={onToggle}
-      aria-pressed={muted}
-      aria-label={muted ? 'Unmute sound effects' : 'Mute sound effects'}
-      title={muted ? 'Sound off — click to play' : 'Sound on — click to mute'}
+      onClick={ready ? onToggle : undefined}
+      aria-pressed={ready ? !muted : undefined}
+      aria-label={muted ? 'Sound off. Turn sound on' : 'Sound on. Turn sound off'}
+      title={muted ? 'Sound off' : 'Sound on'}
       className={cn(
-        'inline-flex h-8 items-center justify-center rounded-full border text-xs font-semibold transition',
-        compact ? 'w-8 px-0' : 'gap-1.5 px-3',
-        muted
-          ? 'border-neutral-200 bg-neutral-100 text-neutral-500 hover:bg-neutral-200/80'
-          : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100',
+        'inline-flex h-10 items-center justify-center gap-2 rounded-sm text-caption font-semibold text-fg-muted transition-colors duration-instant hover:bg-surface-2 hover:text-fg max-sm:h-11',
+        compact ? 'w-10 max-sm:w-11' : 'px-3',
         className
       )}
     >
-      {muted ? (
-        <VolumeX className='h-3.5 w-3.5' />
-      ) : (
-        <Volume2 className='h-3.5 w-3.5' />
-      )}
-      {!compact ? <span>{muted ? 'Muted' : 'Sound'}</span> : null}
+      <Icon className='size-5' strokeWidth={1.75} aria-hidden />
+      {!compact ? <span>{muted ? 'Sound off' : 'Sound'}</span> : null}
     </button>
   );
 }
 
-/** Force unmute + optional confirm chirp (e.g. before mock replay). */
+/** Force unmute (e.g. before mock replay). */
 export function ensureSoundOn() {
   setSoundMuted(false);
 }

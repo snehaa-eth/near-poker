@@ -5,6 +5,9 @@ import React, { useEffect, useState } from 'react';
 import type { ArenaEventSummary } from '~/lib/api';
 import { cn } from '~/lib/utils';
 
+import { LivePill, type Status, StatusPill } from '~/components/ui/badge';
+import { Button, buttonVariants } from '~/components/ui/button';
+
 import { Check, Link2 } from 'lucide-react';
 
 /** Re-render every `ms` (countdowns). */
@@ -50,19 +53,19 @@ export function utcTime(iso: string) {
   return `${month} ${d.getUTCDate()}, ${hh}:${mm} UTC`;
 }
 
-const STATUS: Record<ArenaEventSummary['status'], { label: string; cls: string; dot: string }> = {
-  scheduled: { label: 'Upcoming', cls: 'border-sky-200 bg-sky-50 text-sky-700', dot: 'bg-sky-500' },
-  live: { label: 'Live now', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500 animate-pulse' },
-  ended: { label: 'Ended', cls: 'border-neutral-200 bg-neutral-100 text-neutral-600', dot: 'bg-neutral-400' },
+const STATUS: Record<ArenaEventSummary['status'], { label: string; status: Status }> = {
+  scheduled: { label: 'Upcoming', status: 'waiting' },
+  live: { label: 'Live now', status: 'live' },
+  ended: { label: 'Ended', status: 'finished' },
 };
 
 export function EventStatusPill({ status, className }: { status: ArenaEventSummary['status']; className?: string }) {
   const s = STATUS[status];
+  if (status === 'live') return <LivePill label={s.label} className={className} />;
   return (
-    <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold', s.cls, className)}>
-      <span className={cn('h-1.5 w-1.5 rounded-full', s.dot)} />
+    <StatusPill status={s.status} className={className}>
       {s.label}
-    </span>
+    </StatusPill>
   );
 }
 
@@ -85,20 +88,12 @@ export function ShareButtons({ event, dark = false }: { event: Pick<ArenaEventSu
   };
   const xHref = () =>
     `https://x.com/intent/post?text=${encodeURIComponent(shareText(event))}&url=${encodeURIComponent(url())}`;
-  const base = 'inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition';
   return (
     <div className='flex flex-wrap items-center gap-2'>
-      <button
-        type='button'
-        onClick={copy}
-        className={cn(
-          base,
-          dark ? 'bg-white text-neutral-950 hover:bg-neutral-200' : 'border border-neutral-200 bg-white text-neutral-900 hover:bg-neutral-50'
-        )}
-      >
-        {copied ? <Check className='h-4 w-4 text-emerald-600' /> : <Link2 className='h-4 w-4' />}
-        {copied ? 'Link copied' : 'Copy link'}
-      </button>
+      <Button type='button' variant='secondary' size='sm' onClick={copy} className={cn(dark && 'bg-surface-3')}>
+        {copied ? <Check className='text-accent' aria-hidden /> : <Link2 aria-hidden />}
+        <span aria-live='polite'>{copied ? 'Link copied' : 'Copy link'}</span>
+      </Button>
       <a
         href={xHref()}
         onClick={(ev) => {
@@ -106,9 +101,10 @@ export function ShareButtons({ event, dark = false }: { event: Pick<ArenaEventSu
         }}
         target='_blank'
         rel='noopener noreferrer'
-        className={cn(base, dark ? 'bg-white/10 text-white ring-1 ring-white/20 hover:bg-white/15' : 'bg-neutral-950 text-white hover:bg-neutral-800')}
+        className={buttonVariants({ variant: 'ghost', size: 'sm' })}
       >
-        <span className='font-semibold'>𝕏</span> Share
+        Share on X
+        <span className='sr-only'>(opens in a new tab)</span>
       </a>
     </div>
   );

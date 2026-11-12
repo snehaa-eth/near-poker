@@ -2,82 +2,93 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Dark Table design tokens (ui-audit/DESIGN-SYSTEM.md).
+ * Dark-only. One accent: mint #00EC97. No light theme, no lime, no link blue.
+ */
 @layer base {
   :root {
-    --background: #f7f7f8;
-    --foreground: #0a0a0a;
+    color-scheme: dark;
 
-    --card: #ffffff;
-    --card-foreground: #0a0a0a;
+    /* Neutrals (green-tinted blacks) */
+    --bg: #0b0f0d;
+    --surface: #121815;
+    --surface-2: #1a2420;
+    --surface-3: #22302a;
+    --border: #26332d;
+    --border-strong: #33443c;
+    --text: #f2f5f3;
+    --text-muted: #a3ada8;
+    --text-subtle: #8a9590;
+    --text-disabled: #5c6661;
 
-    --popover: #ffffff;
-    --popover-foreground: #0a0a0a;
+    /* Brand + semantic */
+    --accent: #00ec97;
+    --accent-ink: #0b0f0d;
+    --accent-soft: rgba(0, 236, 151, 0.12);
+    --accent-hover: #33f0ac;
+    --felt-1: #0e3b2a;
+    --felt-2: #082419;
+    --rail: #2a2018;
+    --positive: #00ec97;
+    --negative: #ff6b6b;
+    --warning: #f5c542;
+    --info: #9fb4ff;
+    --live: #ff4d5e;
+    --gold: #f5c542;
+    --silver: #c9d1cd;
+    --bronze: #d4a574;
 
-    --primary: #0a0a0a;
-    --primary-foreground: #fafafa;
+    /* Radii */
+    --r-xs: 6px;
+    --r-sm: 10px;
+    --r-md: 16px;
+    --r-lg: 24px;
+    --r-full: 9999px;
 
-    --secondary: #f0f0f2;
-    --secondary-foreground: #0a0a0a;
+    /* Elevation */
+    --shadow-e2: 0 8px 24px rgba(0, 0, 0, 0.4);
+    --shadow-e3: 0 24px 64px rgba(0, 0, 0, 0.6);
+    --scrim: rgba(5, 8, 7, 0.72);
+    --glow-accent: 0 0 0 2px var(--accent), 0 0 24px rgba(0, 236, 151, 0.35);
 
-    --muted: #f0f0f2;
-    --muted-foreground: #737373;
+    /* Motion */
+    --m-instant: 100ms;
+    --m-fast: 150ms;
+    --m-base: 200ms;
+    --m-move: 350ms;
+    --m-emph: 600ms;
+    --m-hold: 1200ms;
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-move: cubic-bezier(0.3, 0, 0, 1);
+    --ease-emph: cubic-bezier(0.16, 1, 0.3, 1);
 
-    --accent: #e8f5e9;
-    --accent-foreground: #0a0a0a;
+    /* Layout */
+    --container: 1200px;
+    --container-narrow: 720px;
+    --nav-h: 56px;
 
-    --destructive: hsl(0 84.2% 60.2%);
-    --destructive-foreground: #fafafa;
-
-    --border: #e5e5e5;
-    --input: #e5e5e5;
-    --ring: #0a0a0a;
-
-    --radius: 0.75rem;
-
-    --felt: #c8e6c9;
-    --page: #f7f7f8;
-
-    --chart-1: hsl(12 76% 61%);
-    --chart-2: hsl(173 58% 39%);
-    --chart-3: hsl(197 37% 24%);
-    --chart-4: hsl(43 74% 66%);
-    --chart-5: hsl(27 87% 67%);
-  }
-
-  .dark {
-    --background: #141414;
-    --foreground: hsl(0 0% 98%);
-
-    --card: hsl(0 0% 3.9%);
-    --card-foreground: hsl(0 0% 98%);
-
-    --popover: hsl(0 0% 3.9%);
-    --popover-foreground: hsl(0 0% 98%);
-
-    --primary: hsl(0 0% 98%);
-    --primary-foreground: hsl(0 0% 9%);
-
-    --secondary: hsl(0 0% 14.9%);
-    --secondary-foreground: hsl(0 0% 98%);
-
-    --muted: hsl(0 0% 14.9%);
-    --muted-foreground: hsl(0 0% 63.9%);
-
-    --accent: hsl(0 0% 14.9%);
-    --accent-foreground: hsl(0 0% 98%);
-
-    --destructive: hsl(0 62.8% 30.6%);
-    --destructive-foreground: hsl(0 0% 98%);
-
-    --border: hsl(0 0% 14.9%);
-    --input: hsl(0 0% 14.9%);
-    --ring: hsl(0 0% 83.1%);
-
-    --chart-1: hsl(220 70% 50%);
-    --chart-2: hsl(160 60% 45%);
-    --chart-3: hsl(30 80% 55%);
-    --chart-4: hsl(280 65% 60%);
-    --chart-5: hsl(340 75% 55%);
+    /* Legacy shadcn aliases (kept so older components render dark, not light) */
+    --background: var(--bg);
+    --foreground: var(--text);
+    --card: var(--surface);
+    --card-foreground: var(--text);
+    --popover: var(--surface-2);
+    --popover-foreground: var(--text);
+    --primary: var(--accent);
+    --primary-foreground: var(--accent-ink);
+    --secondary: var(--surface-2);
+    --secondary-foreground: var(--text);
+    --muted: var(--surface-2);
+    --muted-foreground: var(--text-muted);
+    --accent-foreground: var(--accent-ink);
+    --destructive: var(--negative);
+    --destructive-foreground: var(--accent-ink);
+    --input: var(--border-strong);
+    --ring: var(--accent);
+    --radius: 10px;
+    --felt: var(--felt-1);
+    --page: var(--bg);
   }
 }
 
@@ -86,10 +97,120 @@
     @apply border-border;
   }
   html {
-    @apply bg-[var(--page)] text-foreground antialiased;
+    overflow-x: clip;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply min-h-[100dvh] bg-bg font-sans text-body text-fg;
+    overflow-x: clip;
+  }
+  ::selection {
+    background: rgba(0, 236, 151, 0.3);
+    color: var(--text);
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  /* Tabular numerals wherever numbers line up. */
+  td,
+  .num,
+  [data-num] {
+    font-variant-numeric: tabular-nums;
+  }
+  a {
+    text-underline-offset: 3px;
+  }
+  /* The display font only ships 400: never let the browser synthesize bold. */
+  .font-display,
+  .font-poker {
+    font-weight: 400 !important;
+    font-synthesis: none;
+  }
+}
+
+@layer components {
+  /* Page containers: one wide grid, one narrow column aligned to its left edge. */
+  .container-page {
+    width: 100%;
+    max-width: calc(var(--container) + 2 * 32px);
+    margin-inline: auto;
+    padding-inline: 16px;
+  }
+  @media (min-width: 640px) {
+    .container-page {
+      padding-inline: 24px;
+    }
+  }
+  @media (min-width: 1024px) {
+    .container-page {
+      padding-inline: 32px;
+    }
+  }
+  .container-narrow {
+    max-width: var(--container-narrow);
   }
 
-  body {
-    @apply min-h-[100dvh] bg-background text-foreground;
+  .eyebrow {
+    @apply text-label uppercase text-fg-muted;
+  }
+
+  .link {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .link:hover {
+    text-decoration: underline;
+  }
+
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--surface-2) 0%,
+      var(--surface-3) 50%,
+      var(--surface-2) 100%
+    );
+    background-size: 200% 100%;
+    animation: dt-shimmer 1.2s linear infinite;
+  }
+
+  .live-dot {
+    animation: dt-live 2s ease-in-out infinite;
+  }
+}
+
+@keyframes dt-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@keyframes dt-live {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 150ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton,
+  .live-dot {
+    animation: none !important;
   }
 }

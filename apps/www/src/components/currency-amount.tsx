@@ -70,7 +70,7 @@ export function ChipAmount({
   return (
     <span
       className={cn(
-        'inline-flex min-w-0 items-center gap-1.5 font-semibold tabular-nums leading-none text-neutral-950',
+        'inline-flex min-w-0 items-center gap-1.5 font-semibold tabular-nums leading-none text-fg',
         TEXT_SIZE[size],
         className
       )}
@@ -91,7 +91,7 @@ export function NearAmount({
   return (
     <span
       className={cn(
-        'inline-flex min-w-0 items-center gap-1.5 font-semibold tabular-nums leading-none text-neutral-950',
+        'inline-flex min-w-0 items-center gap-1.5 font-semibold tabular-nums leading-none text-fg',
         TEXT_SIZE[size],
         className
       )}

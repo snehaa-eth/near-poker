@@ -1,5 +1,11 @@
 import type { Config } from 'tailwindcss';
 
+/**
+ * Dark Table theme: see ui-audit/DESIGN-SYSTEM.md (§9 Tailwind mapping).
+ * Semantic tokens live as CSS variables in src/styles/globals.css.
+ * Legacy shadcn names (background, foreground, muted, card, primary…) are kept
+ * as aliases that resolve to the dark tokens.
+ */
 const config = {
   darkMode: ['class'],
   content: [
@@ -19,11 +25,48 @@ const config = {
     },
     extend: {
       fontFamily: {
-        sans: ['var(--font-geist-sans)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: [
+          'var(--font-geist-sans)',
+          'ui-sans-serif',
+          'system-ui',
+          'sans-serif',
+        ],
+        mono: ['var(--font-geist-mono)', 'ui-monospace', 'monospace'],
+        display: ['var(--font-poker)', 'var(--font-geist-sans)', 'sans-serif'],
         poker: ['var(--font-poker)', 'var(--font-geist-sans)', 'sans-serif'],
       },
       colors: {
-        border: 'var(--border)',
+        bg: 'var(--bg)',
+        surface: {
+          DEFAULT: 'var(--surface)',
+          2: 'var(--surface-2)',
+          3: 'var(--surface-3)',
+        },
+        border: { DEFAULT: 'var(--border)', strong: 'var(--border-strong)' },
+        fg: {
+          DEFAULT: 'var(--text)',
+          muted: 'var(--text-muted)',
+          subtle: 'var(--text-subtle)',
+          disabled: 'var(--text-disabled)',
+        },
+        accent: {
+          DEFAULT: 'var(--accent)',
+          ink: 'var(--accent-ink)',
+          soft: 'var(--accent-soft)',
+          hover: 'var(--accent-hover)',
+          foreground: 'var(--accent-ink)',
+        },
+        felt: { 1: 'var(--felt-1)', 2: 'var(--felt-2)' },
+        rail: 'var(--rail)',
+        positive: 'var(--positive)',
+        negative: 'var(--negative)',
+        warning: 'var(--warning)',
+        info: 'var(--info)',
+        live: 'var(--live)',
+        gold: 'var(--gold)',
+        silver: 'var(--silver)',
+        bronze: 'var(--bronze)',
+        // Legacy shadcn aliases
         input: 'var(--input)',
         ring: 'var(--ring)',
         background: 'var(--background)',
@@ -44,10 +87,6 @@ const config = {
           DEFAULT: 'var(--muted)',
           foreground: 'var(--muted-foreground)',
         },
-        accent: {
-          DEFAULT: 'var(--accent)',
-          foreground: 'var(--accent-foreground)',
-        },
         popover: {
           DEFAULT: 'var(--popover)',
           foreground: 'var(--popover-foreground)',
@@ -56,35 +95,66 @@ const config = {
           DEFAULT: 'var(--card)',
           foreground: 'var(--card-foreground)',
         },
-        chart: {
-          '1': 'var(--chart-1)',
-          '2': 'var(--chart-2)',
-          '3': 'var(--chart-3)',
-          '4': 'var(--chart-4)',
-          '5': 'var(--chart-5)',
-        },
+      },
+      fontSize: {
+        label: [
+          '11px',
+          { lineHeight: '16px', letterSpacing: '0.08em', fontWeight: '600' },
+        ],
+        caption: ['13px', '18px'],
+        body: ['15px', '24px'],
+        lead: ['17px', '26px'],
+        h3: ['20px', { lineHeight: '28px', letterSpacing: '-0.01em' }],
+        h2: ['28px', { lineHeight: '32px', letterSpacing: '0.02em' }],
+        h1: ['40px', { lineHeight: '44px', letterSpacing: '0.01em' }],
+        'h1-sm': ['32px', { lineHeight: '36px', letterSpacing: '0.01em' }],
+        hero: ['64px', '0.95'],
+        pot: [
+          '28px',
+          { lineHeight: '32px', letterSpacing: '-0.02em', fontWeight: '700' },
+        ],
+        stack: ['15px', { lineHeight: '20px', fontWeight: '600' }],
+        countdown: [
+          '40px',
+          { lineHeight: '44px', letterSpacing: '-0.02em', fontWeight: '600' },
+        ],
       },
       borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
+        xs: 'var(--r-xs)',
+        sm: 'var(--r-sm)',
+        md: 'var(--r-md)',
+        lg: 'var(--r-lg)',
+      },
+      boxShadow: {
+        e2: 'var(--shadow-e2)',
+        e3: 'var(--shadow-e3)',
+        glow: 'var(--glow-accent)',
+      },
+      maxWidth: {
+        container: 'var(--container)',
+        narrow: 'var(--container-narrow)',
+      },
+      spacing: { nav: 'var(--nav-h)' },
+      transitionDuration: {
+        instant: '100ms',
+        fast: '150ms',
+        base: '200ms',
+        move: '350ms',
+        emph: '600ms',
+      },
+      transitionTimingFunction: {
+        standard: 'cubic-bezier(.2,0,0,1)',
+        move: 'cubic-bezier(.3,0,0,1)',
+        emph: 'cubic-bezier(.16,1,.3,1)',
       },
       keyframes: {
         'accordion-down': {
-          from: {
-            height: '0',
-          },
-          to: {
-            height: 'var(--radix-accordion-content-height)',
-          },
+          from: { height: '0' },
+          to: { height: 'var(--radix-accordion-content-height)' },
         },
         'accordion-up': {
-          from: {
-            height: 'var(--radix-accordion-content-height)',
-          },
-          to: {
-            height: '0',
-          },
+          from: { height: 'var(--radix-accordion-content-height)' },
+          to: { height: '0' },
         },
       },
       animation: {

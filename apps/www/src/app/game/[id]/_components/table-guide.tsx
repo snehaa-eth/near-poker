@@ -2,7 +2,7 @@
 
 /**
  * Beginner-friendly table states: a plain-English street hint, the arena
- * "How to watch" popover, and the "table finished" card.
+ * "How to watch" explainer, and the "table finished" card.
  */
 import Link from 'next/link';
 
@@ -10,11 +10,7 @@ import React, { useEffect, useState } from 'react';
 
 import { type PublicGameView, api } from '~/lib/api';
 
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '~/components/ui/popover';
+import { ShieldCheck } from 'lucide-react';
 
 /** One line explaining the current street, e.g. "Flop · 3 shared cards". */
 export function streetHint(view: PublicGameView): string | null {
@@ -45,11 +41,11 @@ const HOW_TO_WATCH = [
     body: 'Each seat is someone’s bot. It reads the table and decides fold, check, call or raise by asking an AI model.',
   },
   {
-    title: '🔒 TEE = the model really decided.',
-    body: 'Every move comes from a NEAR AI model running in a sealed chip (a TEE) that signs its answer. Moves without a valid signature are rejected. Tap the badge to open the receipt.',
+    title: 'TEE = the model really decided.',
+    body: 'Every move comes from a NEAR AI model running in a sealed chip (a TEE) that signs its answer. Unsigned moves are rejected. The ✓ on an action opens its receipt.',
   },
   {
-    title: '✅ Verify hand = nobody rigged the deck.',
+    title: 'Verify hand = nobody rigged the deck.',
     body: 'The shuffle is locked in (hashed) before the deal and revealed after. The verify page re-shuffles it in your browser and checks every card.',
   },
   {
@@ -58,38 +54,31 @@ const HOW_TO_WATCH = [
   },
 ];
 
-export function HowToWatch() {
+/** "New to poker?" explainer, as a disclosure inside the table drawer. */
+export function HowToWatch({ defaultOpen = false }: { defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <Popover>
-      <PopoverTrigger
-        aria-label='How to watch'
-        className='inline-flex h-7 items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-semibold text-neutral-800 shadow-sm transition hover:bg-neutral-50'
+    <div className='rounded-md border border-border bg-surface'>
+      <button
+        type='button'
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className='flex min-h-11 w-full items-center justify-between gap-2 px-4 text-left text-[13px] font-semibold text-fg'
       >
-        <span className='flex h-4 w-4 items-center justify-center rounded-full bg-neutral-900 text-[10px] text-white'>
-          ?
-        </span>
         How to watch
-      </PopoverTrigger>
-      <PopoverContent
-        side='top'
-        align='center'
-        className='w-80 rounded-2xl border-neutral-200 bg-white p-4 text-xs text-neutral-700'
-      >
-        <p className='text-sm font-semibold text-neutral-950'>
-          New to poker? Here’s what you’re watching
-        </p>
-        <ul className='mt-2 space-y-2'>
+        <span aria-hidden className='text-fg-subtle'>{open ? '−' : '+'}</span>
+      </button>
+      {open ? (
+        <ul className='space-y-2 px-4 pb-4 text-[13px] leading-snug text-fg-muted'>
           {HOW_TO_WATCH.map((item) => (
-            <li key={item.title} className='leading-snug'>
-              <span className='font-semibold text-neutral-900'>
-                {item.title}
-              </span>{' '}
+            <li key={item.title}>
+              <span className='font-semibold text-fg'>{item.title}</span>{' '}
               {item.body}
             </li>
           ))}
         </ul>
-      </PopoverContent>
-    </Popover>
+      ) : null}
+    </div>
   );
 }
 
@@ -123,12 +112,12 @@ export function TableFinished({ gameId }: { gameId: string }) {
   return (
     <div
       role='status'
-      className='flex max-w-sm flex-col items-center gap-3 rounded-3xl bg-white/95 px-6 py-5 text-center shadow-xl backdrop-blur'
+      className='flex max-w-sm flex-col items-center gap-3 rounded-md border border-border-strong bg-surface-2 px-6 py-5 text-center shadow-[var(--shadow-e2)]'
     >
-      <p className='text-base font-semibold text-neutral-950'>
+      <p className='text-[15px] font-semibold text-fg'>
         Table finished — all agents left.
       </p>
-      <p className='text-sm text-neutral-500'>
+      <p className='text-[13px] text-fg-muted'>
         {hands == null
           ? 'Counting hands…'
           : `${hands.count} hand${hands.count === 1 ? '' : 's'} played.`}
@@ -136,16 +125,17 @@ export function TableFinished({ gameId }: { gameId: string }) {
       <div className='flex flex-wrap justify-center gap-2'>
         <Link
           href='/arena'
-          className='rounded-full bg-neutral-950 px-4 py-2 text-xs font-semibold text-white hover:bg-neutral-800'
+          className='inline-flex h-10 items-center rounded-sm bg-surface-3 px-4 text-[13px] font-semibold text-fg ring-1 ring-border-strong hover:bg-surface'
         >
           Back to arena
         </Link>
         {hands?.lastHandId ? (
           <Link
             href={`/verify/${encodeURIComponent(hands.lastHandId)}`}
-            className='rounded-full bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200 hover:bg-white'
+            className='inline-flex h-10 items-center gap-1.5 rounded-sm bg-accent px-4 text-[13px] font-semibold text-accent-ink hover:bg-accent-hover'
           >
-            ✅ Verify last hand
+            <ShieldCheck className='h-4 w-4' strokeWidth={1.75} />
+            Verify last hand
           </Link>
         ) : null}
       </div>
