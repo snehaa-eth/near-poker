@@ -7,14 +7,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PublicGameView } from '~/lib/api';
 import { ARENA_TURN_SECONDS } from '~/lib/arena';
 import { positionLabel } from '~/lib/poker-positions';
-import {
-  mergeFlashes,
-  useViewActionFlashes,
-  type SeatActionFlash,
-} from '~/lib/seat-action-flash';
+import { mergeFlashes, type SeatActionFlash } from '~/lib/seat-action-flash';
 import { playSound, preloadSounds } from '~/lib/sounds';
-import { createTableSfx } from '~/lib/table-sfx';
+import { useTableDirector } from '~/lib/table-director';
 import { cn } from '~/lib/utils';
+
+import { motion, useAnimationControls, useReducedMotion } from 'framer-motion';
 
 import { toast } from 'sonner';
 import { useSession } from '~/providers/session-provider';
@@ -23,8 +21,17 @@ import { useSocket } from '~/providers/socket-provider';
 import { ChipAmount } from '~/components/currency-amount';
 
 import { ActionBar, type LocalTableAction } from './action-bar';
-import { PlayerSeat, seatPositions } from './player-seat';
+import { PlayerSeat, seatPositions, type SeatAnchor } from './player-seat';
 import { SleekCard } from './sleek-card';
+import {
+  ActionTicker,
+  AllInSplash,
+  ChipDiscs,
+  ChipLayer,
+  RollingNumber,
+  SoundPrompt,
+  type Point,
+} from './table-fx';
 import { HowToWatch, TableFinished, streetHint } from './table-guide';
 
 /** Seconds each player has to act before auto-fold. */
@@ -51,6 +58,26 @@ interface SleekTableProps {
   actionFlashes?: Record<string, SeatActionFlash>;
 }
 
+const toNum = (v: string) => Number.parseFloat(v);
+
+/** Where a seat's street bet sits: between the seat and the middle of the felt. */
+function betPoint(seat: Point, anchor: SeatAnchor): Point {
+  switch (anchor) {
+    // Beside the hole cards (offset sideways) so bets never sit on the pot or the board.
+    case 'bottom':
+      return { left: seat.left + (seat.left > 50 ? -9 : 9), top: seat.top - 16 };
+    case 'top':
+      return { left: seat.left + (seat.left > 50 ? -9 : 9), top: seat.top + 16 };
+    case 'left':
+      return { left: seat.left + 17, top: seat.top + (50 - seat.top) * 0.35 };
+    case 'right':
+      return { left: seat.left - 17, top: seat.top + (50 - seat.top) * 0.35 };
+  }
+}
+
+/** Chips fly to / from the pot pill above the board. */
+const POT_POINT: Point = { left: 50, top: 33 };
+
 function formatTurnClock(seconds: number) {
   const s = Math.max(0, Math.ceil(seconds));
   const m = Math.floor(s / 60);
@@ -72,14 +99,29 @@ export const SleekTable = ({
 }: SleekTableProps) => {
   const { user } = useSession();
   const { socket } = useSocket();
-  const seatStacks = stacksByPlayerId ?? view.stacksByPlayerId;
-  const viewFlashes = useViewActionFlashes(view);
-  const actionFlashes = mergeFlashes(viewFlashes, externalFlashes ?? {});
+  /** Raw live view drives the action bar + clocks; `dv` is the broadcast (staged) view. */
+  const director = useTableDirector(view, { sound: !preview });
+  const dv = director.view;
+  const seatStacks = director.stackHold ?? stacksByPlayerId ?? dv.stacksByPlayerId;
+  // Exact server action log → ignore the slower arena move-feed toasts (they'd double up).
+  const actionFlashes = view.actions
+    ? director.flashes
+    : mergeFlashes(director.flashes, externalFlashes ?? {});
+  const shake = useAnimationControls();
+  const reduceMotion = useReducedMotion();
+  useEffect(() => {
+    if (director.shakeKey === 0 || reduceMotion) return;
+    void shake.start({
+      x: [0, -7, 6, -5, 4, -2, 0],
+      scale: [1, 1.018, 1.01, 1],
+      transition: { duration: 0.55, ease: 'easeOut' },
+    });
+  }, [director.shakeKey, reduceMotion, shake]);
   const defaultStack = stackOverride ?? user?.chips ?? 10000;
   const myStack =
     (view.myPlayerId ? seatStacks?.[view.myPlayerId] : undefined) ??
     defaultStack;
-  const dealerSeat = view.dealerSeat ?? 0;
+  const dealerSeat = dv.dealerSeat ?? 0;
   const turnSeconds = view.arena ? ARENA_TURN_SECONDS : TURN_SECONDS;
   const seated =
     view.myPlayerId != null &&
@@ -100,27 +142,10 @@ export const SleekTable = ({
   const [turnEndsAt, setTurnEndsAt] = useState<number | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(turnSeconds);
   const foldedForTurnRef = useRef<string | null>(null);
-  const tableSfxRef = useRef(createTableSfx());
 
   useEffect(() => {
-    preloadSounds([
-      'cardDeal',
-      'cardFlip',
-      'chipsBet',
-      'chipsShuffle',
-      'shuffle',
-      'pepperChat',
-      'win',
-    ]);
+    preloadSounds();
   }, []);
-
-  useEffect(() => {
-    tableSfxRef.current = createTableSfx();
-  }, [gameId]);
-
-  useEffect(() => {
-    tableSfxRef.current(view);
-  }, [view]);
 
   useEffect(() => {
     if (!turnKey) {
@@ -180,29 +205,48 @@ export const SleekTable = ({
   ]);
 
   const ordered = useMemo(() => {
-    const players = [...view.players].sort((a, b) => a.seat - b.seat);
-    const myIndex = players.findIndex((p) => p.id === view.myPlayerId);
+    const players = [...dv.players].sort((a, b) => a.seat - b.seat);
+    const myIndex = players.findIndex((p) => p.id === dv.myPlayerId);
     if (myIndex <= 0) return players;
     return [...players.slice(myIndex), ...players.slice(0, myIndex)];
-  }, [view.players, view.myPlayerId]);
+  }, [dv.players, dv.myPlayerId]);
 
   const positions = seatPositions(Math.max(ordered.length, 2), {
     inset: embedded,
   });
-  const board = view.communityCards.filter((c) => c >= 0);
+  const { seatPoints, betPoints } = useMemo(() => {
+    const sp: Record<string, Point> = {};
+    const bp: Record<string, Point> = {};
+    ordered.forEach((p, i) => {
+      const pos = positions[i];
+      if (!pos) return;
+      const pt = { left: toNum(pos.left), top: toNum(pos.top) };
+      sp[p.id] = pt;
+      bp[p.id] = betPoint(pt, pos.anchor);
+    });
+    return { seatPoints: sp, betPoints: bp };
+  }, [ordered, positions]);
+  const board = dv.communityCards.filter((c) => c >= 0);
   /** Always five board slots: face-up when dealt, face-down before flop/turn/river. */
   const boardSlots = Array.from({ length: 5 }, (_, i) => {
-    const c = view.communityCards[i];
+    const c = dv.communityCards[i];
     return c != null && c >= 0 ? c : -1;
   });
   /** Arena table closed: every agent left (or was re-queued). */
-  const tableFinished = Boolean(view.arena) && view.players.length === 0;
+  const tableFinished = Boolean(dv.arena) && dv.players.length === 0;
   /** Arena hands auto-start a few seconds after the previous one ends. */
   const arenaBetweenHands =
-    Boolean(view.arena) &&
+    Boolean(dv.arena) &&
     !tableFinished &&
-    (view.gameEnded || view.status !== 'playing');
-  const hint = streetHint(view);
+    (dv.gameEnded || dv.status !== 'playing');
+  const hint = director.runout ? 'Cards up · no more betting' : streetHint(dv);
+  const sidePots = (dv.pots ?? []).filter((p) => p.amount > 0);
+  const equityLeader = director.equity
+    ? Object.entries(director.equity).sort((a, b) => b[1] - a[1])[0]?.[0]
+    : null;
+  const handNames = Object.fromEntries(
+    (dv.showdownHands ?? []).map((h) => [h.playerId, h.handName])
+  );
 
   return (
     <div
@@ -231,6 +275,12 @@ export const SleekTable = ({
         className='pointer-events-none absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/30'
       />
 
+      {!preview ? (
+        <div className='absolute left-3 top-3 z-30 sm:left-4'>
+          <SoundPrompt />
+        </div>
+      ) : null}
+
       <div
         className={cn(
           'relative z-10 mx-auto flex min-h-0 w-full flex-1 items-center justify-center',
@@ -239,7 +289,8 @@ export const SleekTable = ({
             : 'max-w-6xl px-2 sm:px-4 lg:max-w-7xl xl:max-w-[84rem]'
         )}
       >
-        <div
+        <motion.div
+          animate={shake}
           className={cn(
             'relative aspect-[1.75/1] w-full',
             embedded
@@ -253,16 +304,18 @@ export const SleekTable = ({
           <div className='absolute inset-[7%] rounded-[999px] border-[6px] border-white bg-emerald-950/20 shadow-[0_18px_50px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.2)] lg:border-[8px] xl:border-[10px]' />
           <div className='absolute inset-[7%] rounded-[999px] ring-1 ring-white/40' />
           <div className='absolute inset-[12%] rounded-[999px] border-2 border-white/35 shadow-[inset_0_0_40px_rgba(0,0,0,0.25)]' />
+          {/* Spotlight on the middle of the felt */}
+          <div className='pointer-events-none absolute inset-[18%] rounded-[999px] bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.10),transparent_65%)]' />
 
           {tableFinished ? (
             <div className='absolute left-1/2 top-1/2 z-10 flex w-full -translate-x-1/2 -translate-y-1/2 justify-center px-4'>
               <TableFinished gameId={gameId} />
             </div>
           ) : (
-            <div className='absolute left-1/2 top-1/2 z-10 flex w-full max-w-[28rem] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 px-2'>
-              <div className='flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full bg-white/90 px-3.5 py-1.5 text-[12px] font-medium text-neutral-500 shadow-md backdrop-blur lg:text-[13px]'>
-                {view.gameEnded ? (
-                  // The pot has already been paid out; say how the hand ended instead of "Pot 0".
+            <div className='absolute left-1/2 top-1/2 z-10 flex w-full max-w-[30rem] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1.5 px-2'>
+              {dv.gameEnded ? (
+                <div className='flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full bg-white/90 px-3.5 py-1.5 text-[12px] font-medium text-neutral-500 shadow-md backdrop-blur lg:text-[13px]'>
+                  {/* The pot has already been paid out; say how the hand ended instead of "Pot 0". */}
                   <span className='font-semibold text-neutral-800'>
                     {board.length === 0
                       ? 'Hand over · won before the flop'
@@ -270,65 +323,107 @@ export const SleekTable = ({
                         ? 'Hand over · everyone else folded'
                         : 'Hand over · showdown'}
                   </span>
-                ) : arenaBetweenHands ? (
+                </div>
+              ) : null}
+              {dv.gameEnded && arenaBetweenHands ? (
+                <p className='-mt-0.5 text-[11px] font-medium text-white/85 drop-shadow lg:text-xs'>
+                  Next hand starting…
+                </p>
+              ) : null}
+              {dv.gameEnded ? null : arenaBetweenHands ? (
+                <div className='rounded-full bg-white/90 px-3.5 py-1.5 text-[12px] font-medium shadow-md backdrop-blur lg:text-[13px]'>
                   <span className='font-semibold text-neutral-800'>
                     Next hand starting…
                   </span>
-                ) : (
-                  <>
-                    <span>Pot</span>
-                    <ChipAmount
-                      value={view.pot}
-                      size='sm'
-                      className='text-[12px] text-neutral-900 lg:text-[13px]'
-                      iconClassName='h-3.5 w-3.5'
-                    />
-                    <span className='text-neutral-300'>·</span>
-                    <span className='font-semibold text-neutral-800'>
-                      {view.roundLabel}
+                </div>
+              ) : (
+                <>
+                  <div
+                    className='flex items-center gap-2 rounded-full bg-neutral-950/85 py-1 pl-1.5 pr-4 text-white shadow-[0_8px_30px_rgba(0,0,0,0.45)] ring-1 ring-amber-300/40 backdrop-blur'
+                    data-testid='pot'
+                  >
+                    <ChipDiscs amount={Math.max(1, dv.pot)} />
+                    <span className='text-[10px] font-bold uppercase tracking-[0.18em] text-amber-200/90'>
+                      Pot
                     </span>
+                    <RollingNumber
+                      value={dv.pot}
+                      className='text-base font-black lg:text-lg'
+                    />
+                  </div>
+                  <div className='flex flex-wrap items-center justify-center gap-x-1.5 text-[11px] font-medium text-white/80 drop-shadow lg:text-xs'>
+                    <span className='font-semibold text-white'>{dv.roundLabel}</span>
                     {hint ? (
                       <>
-                        <span className='hidden text-neutral-300 sm:inline'>
-                          ·
-                        </span>
-                        <span className='hidden text-[11px] text-neutral-500 sm:inline'>
-                          {hint}
-                        </span>
+                        <span className='hidden text-white/40 sm:inline'>·</span>
+                        <span className='hidden sm:inline'>{hint}</span>
                       </>
                     ) : null}
-                  </>
-                )}
-              </div>
+                  </div>
+                </>
+              )}
+
+              {sidePots.length > 1 ? (
+                <div className='flex flex-wrap justify-center gap-1' data-testid='side-pots'>
+                  {sidePots.map((p, i) => (
+                    <span
+                      key={i}
+                      title={`Eligible: ${p.eligible.map((id) => dv.players.find((x) => x.id === id)?.nickname ?? id).join(', ')}`}
+                      className='rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white ring-1 ring-white/15'
+                    >
+                      {i === 0 ? 'Main pot' : sidePots.length > 2 ? `Side pot ${i}` : 'Side pot'}{' '}
+                      <span className='tabular-nums text-amber-200'>
+                        <RollingNumber value={p.amount} />
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
 
               <div className='flex items-end gap-1.5 sm:gap-2 lg:gap-2.5'>
                 {boardSlots.map((cardId, i) => (
-                  <SleekCard
+                  <motion.div
                     key={`board-${i}-${cardId}`}
-                    cardId={cardId}
-                    backSeed={i + 31}
-                    className='hover:-translate-y-1'
-                    size='md'
-                  />
+                    initial={
+                      cardId >= 0 && !reduceMotion
+                        ? { rotateY: 90, y: -14, opacity: 0.4 }
+                        : false
+                    }
+                    animate={{ rotateY: 0, y: 0, opacity: 1 }}
+                    transition={{
+                      duration: 0.35,
+                      delay: cardId >= 0 ? Math.max(0, i - (board.length >= 3 && i < 3 ? 0 : i)) * 0.12 : 0,
+                      ease: 'easeOut',
+                    }}
+                  >
+                    <SleekCard
+                      cardId={cardId}
+                      backSeed={i + 31}
+                      className='hover:-translate-y-1'
+                      size='md'
+                    />
+                  </motion.div>
                 ))}
               </div>
 
               {board.length === 0 ? (
                 <p className='text-[11px] font-medium text-white/75 drop-shadow'>
-                  {view.gameEnded
+                  {dv.gameEnded
                     ? 'Hand ended before the flop'
                     : arenaBetweenHands
                       ? 'Dealing the next hand…'
-                      : 'Pre-flop · board stays face-down'}
+                      : director.runout
+                        ? 'All in pre-flop · running the board'
+                        : 'Pre-flop · board stays face-down'}
                 </p>
               ) : null}
 
-              {view.fairness ? (
-                view.fairness.revealed ||
-                view.gameEnded ||
-                view.round === 'End' ? (
+              {dv.fairness ? (
+                dv.fairness.revealed ||
+                dv.gameEnded ||
+                dv.round === 'End' ? (
                   <Link
-                    href={`/verify/${encodeURIComponent(view.fairness.handId)}`}
+                    href={`/verify/${encodeURIComponent(dv.fairness.handId)}`}
                     target='_blank'
                     className='rounded-full bg-emerald-50/95 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-800 shadow-sm ring-1 ring-emerald-200 transition hover:bg-white lg:text-[11px]'
                   >
@@ -336,22 +431,38 @@ export const SleekTable = ({
                   </Link>
                 ) : (
                   <span
-                    title={`Deck seed hash committed before the deal: ${view.fairness.seedHash}`}
+                    title={`Deck seed hash committed before the deal: ${dv.fairness.seedHash}`}
                     className='rounded-full bg-black/40 px-2.5 py-0.5 font-mono text-[10px] text-white/90 shadow-sm backdrop-blur-sm lg:text-[11px]'
                   >
-                    🔒 Deck committed · {view.fairness.seedHash.slice(0, 8)}
+                    🔒 Deck committed · {dv.fairness.seedHash.slice(0, 8)}
                   </span>
                 )
               ) : null}
 
-              {view.gameEnded && view.winnerNickname ? (
-                <div className='rounded-full bg-neutral-950 px-4 py-1.5 text-sm font-semibold text-white shadow-lg'>
-                  Winner · {view.winnerNickname}
-                  {view.winningHand ? ` · ${view.winningHand}` : ''}
-                </div>
+              {dv.gameEnded && dv.winnerNickname ? (
+                <motion.div
+                  initial={reduceMotion ? false : { scale: 0.7, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 380, damping: 22, delay: 0.5 }}
+                  className='rounded-full bg-neutral-950 px-4 py-1.5 text-sm font-semibold text-white shadow-lg ring-1 ring-amber-300/50'
+                >
+                  Winner · {dv.winnerNickname}
+                  {dv.winningHand ? ` · ${dv.winningHand}` : ''}
+                </motion.div>
               ) : null}
             </div>
           )}
+
+          <ChipLayer
+            seatPoints={seatPoints}
+            betPoints={betPoints}
+            potPoint={POT_POINT}
+            bets={director.bets}
+            sweep={director.sweep}
+            award={director.award}
+          />
+
+          <AllInSplash splash={director.allInSplash} />
 
           {ordered.map((player, index) => {
             const pos = positions[index] ?? {
@@ -359,13 +470,26 @@ export const SleekTable = ({
               top: '50%',
               anchor: 'bottom' as const,
             };
-            const isMe = player.id === view.myPlayerId;
+            const isMe = player.id === dv.myPlayerId;
             const isTurn =
-              player.id === view.nextPlayerId && view.status === 'playing';
+              player.id === dv.nextPlayerId && dv.status === 'playing';
             const isWinner =
-              view.gameEnded &&
-              view.winnerId != null &&
-              player.id === view.winnerId;
+              dv.gameEnded &&
+              (dv.winners?.length
+                ? dv.winners.some((w) => w.playerId === player.id)
+                : dv.winnerId != null && player.id === dv.winnerId);
+            const stack = seatStacks?.[player.id] ?? defaultStack;
+            const share = director.equity?.[player.id];
+            const blind =
+              dv.bbPlayerId === player.id
+                ? ('BB' as const)
+                : dv.sbPlayerId === player.id
+                  ? ('SB' as const)
+                  : null;
+            let label = showPositions
+              ? positionLabel(player.seat, dealerSeat, ordered.length)
+              : null;
+            if (label && blind && !(blind === 'SB' && label === 'BTN')) label = blind;
             return (
               <PlayerSeat
                 key={player.id}
@@ -373,25 +497,50 @@ export const SleekTable = ({
                 isMe={isMe}
                 isTurn={isTurn}
                 isWinner={isWinner}
-                winningHand={isWinner ? view.winningHand : undefined}
-                positionLabel={
-                  showPositions
-                    ? positionLabel(player.seat, dealerSeat, ordered.length)
-                    : null
+                winningHand={
+                  isWinner
+                    ? handNames[player.id] ?? dv.winningHand
+                    : undefined
                 }
+                positionLabel={label}
+                blind={blind}
                 compact={embedded}
                 anchor={pos.anchor}
                 turnSecondsLeft={isTurn && turnActive ? secondsLeft : null}
+                turnTotalSeconds={turnSeconds}
                 actionFlash={actionFlashes[player.id] ?? null}
                 player={player}
-                stack={seatStacks?.[player.id] ?? defaultStack}
+                stack={stack}
+                allIn={
+                  !dv.gameEnded &&
+                  !player.folded &&
+                  player.holeCards.length > 0 &&
+                  (player.allIn ?? (dv.status === 'playing' && !dv.gameEnded && stack <= 0))
+                }
+                equity={
+                  share != null
+                    ? { share, leading: player.id === equityLeader }
+                    : null
+                }
+                handName={dv.gameEnded ? handNames[player.id] ?? null : null}
                 avatarUrl={isMe ? user?.avatar : null}
                 style={{ left: pos.left, top: pos.top }}
               />
             );
           })}
-        </div>
+        </motion.div>
       </div>
+
+      {!preview && !tableFinished ? (
+        <div
+          className={cn(
+            'relative z-10 mx-auto mt-1 w-full',
+            embedded ? 'px-3 sm:px-5' : 'max-w-4xl px-3'
+          )}
+        >
+          <ActionTicker items={director.ticker} />
+        </div>
+      ) : null}
 
       {!preview && spectator ? (
         embedded ? null : (

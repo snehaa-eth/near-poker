@@ -168,6 +168,7 @@ export function ArenaSpectator({
             nextPlayerNickname={view.nextPlayerNickname}
             defaultOpen
             onMove={onArenaMove}
+            silent
           />
         </div>
 

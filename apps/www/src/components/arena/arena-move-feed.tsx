@@ -90,6 +90,7 @@ export function ArenaMoveFeed({
   nextPlayerNickname,
   defaultOpen = false,
   onMove,
+  silent = false,
 }: {
   handId?: string | null;
   mock?: boolean;
@@ -97,6 +98,8 @@ export function ArenaMoveFeed({
   defaultOpen?: boolean;
   /** Fired for each newly revealed move — used for on-table seat toasts. */
   onMove?: (move: ArenaMoveRecord) => void;
+  /** The table plays SFX from the live view; don't double them from this (slower) feed. */
+  silent?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const { data } = useQuery({
@@ -138,9 +141,9 @@ export function ArenaMoveFeed({
     }
     if (heardRef.current === key) return;
     heardRef.current = key;
-    playActionSound(latest.action);
+    if (!silent) playActionSound(latest.action);
     onMove?.(latest);
-  }, [latest, mock, onMove]);
+  }, [latest, mock, onMove, silent]);
 
   useEffect(() => {
     heardRef.current = null;
@@ -153,12 +156,14 @@ export function ArenaMoveFeed({
       mockTimerRef.current = null;
     }
     // Replay is an explicit play intent — unmute if the user had muted.
-    if (isSoundMuted()) ensureSoundOn();
+    if (isSoundMuted() && !silent) ensureSoundOn();
     heardRef.current = null;
     setMockCount(0);
     setMockPlaying(true);
-    playSound('shuffle', 0.5);
-    playSound('cardDeal', 0.7);
+    if (!silent) {
+      playSound('shuffle', 0.5);
+      playSound('cardDeal', 0.7);
+    }
 
     let i = 0;
     mockTimerRef.current = window.setInterval(() => {
@@ -169,7 +174,7 @@ export function ArenaMoveFeed({
           mockTimerRef.current = null;
         }
         setMockPlaying(false);
-        playSound('win', 0.7);
+        if (!silent) playSound('win', 0.7);
         return;
       }
       const move = script[i]!;
@@ -231,7 +236,7 @@ export function ArenaMoveFeed({
         ) : (
           <p className='flex-1 text-sm text-neutral-500'>{waitingLabel}</p>
         )}
-        {mock ? (
+        {mock && !silent ? (
           <button
             type='button'
             onClick={startMockReplay}

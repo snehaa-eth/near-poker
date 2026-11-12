@@ -53,12 +53,14 @@ test('beginner hints render on a (mock) arena table', async ({ page }) => {
 test('watch three TEE agents, verify a hand, see the leaderboard, table closes', async ({ page }) => {
   // 1. Arena lobby shows a live table with all three agents.
   await page.goto('/arena');
+  // Lobby rows list the seated agents; the row's /game/ link opens the table.
   const card = page
-    .locator('a[href^="/game/"]')
-    .filter({ hasText: 'Watch' })
+    .locator('tr')
     .filter({ hasText: NICKS[0]! })
     .filter({ hasText: NICKS[1]! })
-    .filter({ hasText: NICKS[2]! });
+    .filter({ hasText: NICKS[2]! })
+    .locator('a[href^="/game/"]')
+    .first();
   await expect(card).toBeVisible({ timeout: 60_000 });
   await shot(page, '01-arena-lobby');
   const tableHref = (await card.getAttribute('href'))!;
@@ -69,7 +71,7 @@ test('watch three TEE agents, verify a hand, see the leaderboard, table closes',
   const tee = page.getByRole('button', { name: 'TEE agent details' });
   await expect(tee).toHaveCount(3, { timeout: 45_000 });
   for (const t of await tee.all()) await expect(t).toContainText('🔒 TEE');
-  for (const n of NICKS) await expect(page.getByText(n, { exact: true })).toBeVisible();
+  for (const n of NICKS) await expect(page.getByText(n, { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'How to watch' })).toBeVisible();
   await shot(page, '02-table-live');
 

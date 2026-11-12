@@ -11,7 +11,6 @@ import {
 } from '~/lib/seat-action-flash';
 import { cn } from '~/lib/utils';
 
-import { ChipAmount } from '~/components/currency-amount';
 import {
   Popover,
   PopoverContent,
@@ -19,13 +18,14 @@ import {
 } from '~/components/ui/popover';
 
 import { SleekCard } from './sleek-card';
+import { EquityBadge, RollingNumber } from './table-fx';
 
 import { ArrowUpRight } from 'lucide-react';
 
 /** How long an agent's table talk stays on screen. */
 const SPEECH_MS = 5000;
 /** How long the fold/call/raise toast stays over the seat name. */
-const ACTION_FLASH_MS = 1400;
+const ACTION_FLASH_MS = 2000;
 
 export type SeatPlayer = {
   id: string;
@@ -192,6 +192,46 @@ interface PlayerSeatProps {
   turnSecondsLeft?: number | null;
   /** Ephemeral fold / call / raise toast over the agent name. */
   actionFlash?: SeatActionFlash | null;
+  /** Full turn length (seconds) — drives the countdown ring. */
+  turnTotalSeconds?: number;
+  /** No chips behind, still in the hand. */
+  allIn?: boolean;
+  /** Win share during a staged all-in run-out (revealed cards only). */
+  equity?: { share: number; leading: boolean } | null;
+  /** Best-hand name at showdown (non-winners; the winner badge carries its own). */
+  handName?: string | null;
+  /** Blind posted this hand. */
+  blind?: 'SB' | 'BB' | null;
+}
+
+/** Countdown ring drawn around the avatar while a seat is on the clock. */
+function TurnRing({ fraction, urgent }: { fraction: number; urgent: boolean }) {
+  const r = 22;
+  const c = 2 * Math.PI * r;
+  const f = Math.max(0, Math.min(1, fraction));
+  return (
+    <svg
+      viewBox='0 0 48 48'
+      className='pointer-events-none absolute -inset-[3px] h-[calc(100%+6px)] w-[calc(100%+6px)] -rotate-90'
+      aria-hidden
+    >
+      <circle cx='24' cy='24' r={r} fill='none' strokeWidth='3' className='stroke-black/10' />
+      <circle
+        cx='24'
+        cy='24'
+        r={r}
+        fill='none'
+        strokeWidth='3.5'
+        strokeLinecap='round'
+        strokeDasharray={c}
+        strokeDashoffset={c * (1 - f)}
+        className={cn(
+          'transition-[stroke-dashoffset] duration-300 ease-linear',
+          urgent ? 'stroke-red-500' : f < 0.5 ? 'stroke-amber-400' : 'stroke-[#1D9BF0]'
+        )}
+      />
+    </svg>
+  );
 }
 
 function formatClock(seconds: number) {
@@ -225,6 +265,11 @@ export const PlayerSeat = ({
   style,
   turnSecondsLeft = null,
   actionFlash = null,
+  turnTotalSeconds = 30,
+  allIn = false,
+  equity = null,
+  handName = null,
+  blind = null,
 }: PlayerSeatProps) => {
   const cards = player.folded
     ? []
@@ -233,7 +278,6 @@ export const PlayerSeat = ({
       : [];
   const urgent = turnSecondsLeft != null && turnSecondsLeft <= 15;
   const speech = useSpeech(player.bot?.lastLine);
-  const showStreetBet = !player.folded && player.chipsInPot > 0;
   const [flashVisible, setFlashVisible] = useState<SeatActionFlash | null>(
     null
   );
@@ -263,27 +307,16 @@ export const PlayerSeat = ({
       </div>
     ) : null;
 
-  const streetBet = showStreetBet ? (
-    <div className='rounded-full bg-white/95 px-2 py-0.5 shadow-sm ring-1 ring-black/5'>
-      <ChipAmount
-        value={player.chipsInPot}
-        size='sm'
-        className='text-[11px] font-semibold text-neutral-700'
-        iconClassName='h-3.5 w-3.5'
-      />
-    </div>
-  ) : null;
-
   const seatPill = (
     <div className='relative'>
-      {flashVisible ? (
+      {flashVisible && !equity ? (
         <div
           key={flashVisible.id}
           role='status'
           className={cn(
-            'pointer-events-none absolute left-1/2 z-40 -translate-x-1/2 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide shadow-lg animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-1',
+            'pointer-events-none absolute left-1/2 z-40 -translate-x-1/2 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide shadow-lg ring-2 ring-white/70 animate-in fade-in-0 zoom-in-95 slide-in-from-top-1',
             'duration-200',
-            compact ? '-top-7 text-[9px]' : '-top-8 lg:-top-9 lg:text-[11px]',
+            compact ? '-bottom-6 text-[9px]' : '-bottom-7 lg:-bottom-8 lg:text-[11px]',
             actionFlashTone(flashVisible.action)
           )}
         >
@@ -293,13 +326,24 @@ export const PlayerSeat = ({
       {isDealer ? (
         <div
           className={cn(
-            'absolute z-10 flex -translate-y-1/2 items-center justify-center rounded-full bg-neutral-950 font-bold text-white shadow',
+            'absolute z-10 flex -translate-y-1/2 items-center justify-center rounded-full border-2 border-neutral-300 bg-white font-black text-neutral-900 shadow-[0_2px_6px_rgba(0,0,0,0.45)] ring-1 ring-black/10',
             compact
-              ? '-left-3 top-1/2 h-4 w-4 text-[9px]'
-              : '-left-3.5 top-1/2 h-5 w-5 text-[10px] lg:h-6 lg:w-6 lg:text-xs'
+              ? '-left-3 top-1/2 h-5 w-5 text-[9px]'
+              : '-left-3.5 top-1/2 h-6 w-6 text-[10px] lg:h-7 lg:w-7 lg:text-xs'
           )}
+          title='Dealer button'
         >
           D
+        </div>
+      ) : null}
+      {allIn && !player.folded ? (
+        <div className='absolute -right-2 -top-2.5 z-20 rounded-md bg-rose-600 px-1.5 py-[1px] text-[9px] font-black uppercase tracking-wider text-white shadow-[0_2px_10px_rgba(225,29,72,0.6)] ring-1 ring-white/80 lg:text-[10px]'>
+          All in
+        </div>
+      ) : null}
+      {blind && !positionLabel ? (
+        <div className='absolute -left-1 -top-2.5 z-20 rounded-full bg-neutral-900 px-1.5 py-[1px] text-[9px] font-bold text-white ring-1 ring-white/60'>
+          {blind}
         </div>
       ) : null}
       <div
@@ -318,6 +362,10 @@ export const PlayerSeat = ({
           flashVisible && 'ring-[3px] ring-white/40'
         )}
       >
+        <div className='relative shrink-0'>
+        {isTurn && turnSecondsLeft != null ? (
+          <TurnRing fraction={turnSecondsLeft / Math.max(1, turnTotalSeconds)} urgent={urgent} />
+        ) : null}
         {avatarUrl ? (
           <div
             className={cn(
@@ -343,6 +391,7 @@ export const PlayerSeat = ({
             {player.nickname.slice(0, 1).toUpperCase()}
           </div>
         )}
+        </div>
         <div className='min-w-0 flex-1 leading-tight'>
           <div className='flex min-w-0 items-center gap-1'>
             <span
@@ -367,14 +416,19 @@ export const PlayerSeat = ({
             ) : null}
           </div>
           <div className='mt-0.5 flex min-w-0 items-center gap-1 text-[10px] text-neutral-500'>
-            <ChipAmount
-              // `stack` is already the remaining stack (street bet deducted).
-              value={Math.max(stack, 0)}
-              size='sm'
-              className='text-[10px] font-normal text-neutral-500'
-              iconClassName='h-3 w-3'
-            />
-            {player.folded ? (
+            {/* `stack` is already the remaining stack (street bet deducted). */}
+            <span className='inline-flex shrink-0 items-center gap-0.5'>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src='/icons/poker-chip.png' alt='' className='h-3 w-3' draggable={false} />
+              <RollingNumber
+                value={Math.max(stack, 0)}
+                className={cn(
+                  'text-[10px] font-semibold',
+                  allIn && !player.folded ? 'text-rose-600' : 'text-neutral-600'
+                )}
+              />
+            </span>
+            {player.folded && !compact ? (
               <span className='font-semibold uppercase tracking-wide text-neutral-400'>
                 folded
               </span>
@@ -392,6 +446,12 @@ export const PlayerSeat = ({
 
   const statusBits = (
     <>
+      {equity ? <EquityBadge share={equity.share} leading={equity.leading} /> : null}
+      {!isWinner && handName && !player.folded ? (
+        <div className='rounded-full bg-neutral-900/85 px-2 py-0.5 text-[10px] font-semibold text-white/90 shadow'>
+          {handName}
+        </div>
+      ) : null}
       {isWinner ? (
         <div className='rounded-full bg-amber-400 px-2.5 py-0.5 text-[11px] font-semibold text-neutral-950 shadow'>
           🏆 Winner{winningHand ? ` · ${winningHand}` : ''}
@@ -414,23 +474,19 @@ export const PlayerSeat = ({
   );
 
   // Cards + street bet always face the felt; pill sits on the rail.
-  const towardCenter = (
-    <>
-      {holeCards}
-      {streetBet}
-    </>
-  );
+  const towardCenter = holeCards;
 
   return (
     <div
       className={cn(
         'absolute z-20 flex -translate-x-1/2 -translate-y-1/2 items-center transition-opacity',
         compact ? 'gap-1' : 'gap-1.5',
-        player.folded && 'opacity-40',
+        player.folded && 'opacity-40 grayscale',
         anchor === 'bottom' && 'flex-col',
         anchor === 'top' && 'flex-col-reverse',
-        anchor === 'left' && 'flex-row',
-        anchor === 'right' && 'flex-row-reverse'
+        // Hole cards face the felt: right of a left-rail seat, left of a right-rail seat.
+        anchor === 'left' && 'flex-row-reverse',
+        anchor === 'right' && 'flex-row'
       )}
       style={style}
     >

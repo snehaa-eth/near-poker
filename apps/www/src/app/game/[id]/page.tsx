@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 
 import { type PublicGameView, api } from '~/lib/api';
-import { mockArenaView } from '~/lib/arena';
+import { startMockHandLoop } from '~/lib/mock-hand';
 import { truncate } from '~/lib/utils';
 
 import { toast } from 'sonner';
@@ -34,8 +34,8 @@ const GamePage = ({
 
   useEffect(() => {
     if (mock) {
-      setView(mockArenaView(gameId));
-      return;
+      // Scripted hand streamed like the live server, so the table animates offline.
+      return startMockHandLoop(gameId, setView);
     }
     // Wait for the session so we know whether this visitor can sit down.
     if (sessionLoading) return;

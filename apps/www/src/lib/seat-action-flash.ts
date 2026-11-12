@@ -25,7 +25,9 @@ export function actionFlashLabel(flash: SeatActionFlash): string {
   if (a === 'raise') {
     return flash.amount != null ? `RAISE ${formatTokens(flash.amount)}` : 'RAISE';
   }
-  if (a === 'all-in' || a === 'allin') return 'ALL-IN';
+  if (a === 'all-in' || a === 'allin') {
+    return flash.amount != null ? `ALL IN ${formatTokens(flash.amount)}` : 'ALL IN';
+  }
   return String(flash.action).toUpperCase();
 }
 

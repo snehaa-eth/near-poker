@@ -1,5 +1,6 @@
 import {
   applyAction,
+  buildPots,
   createTable,
   getLegalActions,
   startHand,
@@ -383,7 +384,14 @@ export type PublicAgentInfo = {
 
 export type NlhePublicView = Omit<PublicGameView, 'players'> & {
   players: Array<
-    PublicGameView['players'][number] & { bot?: PublicBotInfo; agent?: PublicAgentInfo }
+    PublicGameView['players'][number] & {
+      bot?: PublicBotInfo;
+      agent?: PublicAgentInfo;
+      /** No chips behind and still in the hand. */
+      allIn?: boolean;
+      /** Chips this player has put in across the whole hand. */
+      committed?: number;
+    }
   >;
   /** true on Agent Arena tables (INTERFACES.md §5.4). */
   arena?: boolean;
@@ -393,7 +401,125 @@ export type NlhePublicView = Omit<PublicGameView, 'players'> & {
   fairness?: PublicFairness;
   /** Name of the top winner's best 5-card hand ("Two Pair", …); only when the hand ended at showdown. */
   winningHand?: string;
+  /* ---- Spectator broadcast fields (additive; all derived from public information) ---- */
+  smallBlind?: number;
+  bigBlind?: number;
+  /** Player ids posting the blinds this hand. */
+  sbPlayerId?: string | null;
+  bbPlayerId?: string | null;
+  /** This hand's betting actions in order; `amount` = player's street total after the action. */
+  actions?: PublicAction[];
+  /**
+   * Main + side pots. In-hand: only chips from completed streets (current street bets are
+   * still in front of the players). At hand end: the pots that were awarded.
+   */
+  pots?: PublicPot[];
+  /** Hand end only: who won what (one entry per pot share). */
+  winners?: Array<{ playerId: string; amount: number; potIndex: number }>;
+  /** Hand end at showdown only: every contender's best-hand name. */
+  showdownHands?: Array<{ playerId: string; handName: string }>;
 };
+
+export type PublicAction = {
+  playerId: string;
+  street: string;
+  type: string;
+  /** Street total for this player after the action (bet / raise / call / all-in). */
+  amount?: number;
+};
+
+export type PublicPot = { amount: number; eligible: string[] };
+
+/** SB / BB player ids, mirroring the engine's `startHand` blind posting. */
+export function blindPlayerIds(table: TableState): {
+  sb: string | null;
+  bb: string | null;
+} {
+  const dealt = [...table.players]
+    .filter((p) => p.holeCards.length > 0)
+    .sort((a, b) => a.seat - b.seat);
+  if (dealt.length < 2) return { sb: null, bb: null };
+  const after = (seat: number) =>
+    dealt.find((p) => p.seat > seat) ?? dealt[0]!;
+  const btn = dealt.find((p) => p.seat === table.button);
+  const sb = dealt.length === 2 && btn ? btn : after(table.button);
+  const bb = after(sb.seat);
+  return { sb: sb.id, bb: bb.id };
+}
+
+/**
+ * Public action log with a normalised `amount` (the actor's street total after acting).
+ * The engine records `amount` inconsistently (target for raises, delta for short all-ins),
+ * so replay the street bets here. Uses only public information.
+ */
+export function publicActions(table: TableState): PublicAction[] {
+  const { sb, bb } = blindPlayerIds(table);
+  let street = 'preflop';
+  let bets = new Map<string, number>();
+  let currentBet = 0;
+  const resetPreflop = () => {
+    bets = new Map();
+    if (sb) bets.set(sb, table.config.smallBlind);
+    if (bb) bets.set(bb, table.config.bigBlind);
+    currentBet = table.config.bigBlind;
+  };
+  resetPreflop();
+  const out: PublicAction[] = [];
+  for (const h of table.actionHistory) {
+    if (h.street !== street) {
+      street = h.street;
+      bets = new Map();
+      currentBet = 0;
+    }
+    const before = bets.get(h.playerId) ?? 0;
+    let amount: number | undefined;
+    if (h.type === 'call') {
+      amount = currentBet;
+    } else if (h.type === 'bet' || h.type === 'raise') {
+      amount = h.amount ?? currentBet;
+    } else if (h.type === 'all-in') {
+      const a = h.amount ?? 0;
+      amount = a > currentBet ? a : before + a;
+    }
+    if (amount != null) {
+      bets.set(h.playerId, amount);
+      currentBet = Math.max(currentBet, amount);
+    }
+    out.push({
+      playerId: h.playerId,
+      street: h.street,
+      type: h.type,
+      ...(amount != null ? { amount } : {}),
+    });
+  }
+  return out;
+}
+
+/** Merge adjacent pots with the same eligible set (folded-player layers). */
+function mergePots(pots: Array<{ amount: number; eligible: string[] }>): PublicPot[] {
+  const out: PublicPot[] = [];
+  for (const p of pots) {
+    if (p.amount <= 0) continue;
+    const key = [...p.eligible].sort().join(',');
+    const last = out[out.length - 1];
+    if (last && [...last.eligible].sort().join(',') === key) {
+      last.amount += p.amount;
+    } else {
+      out.push({ amount: p.amount, eligible: [...p.eligible] });
+    }
+  }
+  return out;
+}
+
+export function publicPots(table: TableState): PublicPot[] {
+  if (table.street === 'complete') return mergePots(table.pots);
+  // In-hand: chips already pulled into the middle (completed streets only).
+  const settled = table.players.map((p) => ({
+    ...p,
+    committed: Math.max(0, p.committed - p.bet),
+  }));
+  return mergePots(buildPots(settled));
+}
 
 export function toNlhePublicView(
   state: StoredGame,
@@ -459,6 +585,8 @@ export function toNlhePublicView(
         holeCards,
         chosenCommunity: [] as number[],
         weight: 0,
+        allIn: Boolean(ep?.allIn && !ep.folded && holeRaw.length > 0),
+        committed: ep?.committed ?? 0,
       };
     });
 
@@ -469,6 +597,14 @@ export function toNlhePublicView(
   ];
 
   const round = STREET_TO_ROUND[table.street];
+  const blinds = blindPlayerIds(table);
+  const showdownHands =
+    ended && table.result?.showdown
+      ? table.result.rankings.map((r) => ({
+          playerId: r.playerId,
+          handName: r.handName,
+        }))
+      : undefined;
 
   return {
     gameId: state.gameId,
@@ -502,6 +638,16 @@ export function toNlhePublicView(
     stacksByPlayerId,
     fairness: publicFairness(state),
     ...(winningHand ? { winningHand } : {}),
+    smallBlind: table.config.smallBlind,
+    bigBlind: table.config.bigBlind,
+    sbPlayerId: blinds.sb,
+    bbPlayerId: blinds.bb,
+    actions: publicActions(table),
+    pots: publicPots(table),
+    ...(ended
+      ? { winners: (table.result?.winners ?? []).map((w) => ({ ...w })) }
+      : {}),
+    ...(showdownHands ? { showdownHands } : {}),
   };
 }
 
