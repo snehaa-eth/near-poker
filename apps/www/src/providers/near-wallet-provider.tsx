@@ -85,6 +85,14 @@ export const LOGIN_MESSAGE = 'Sign in to Dark Table';
 export const LOGIN_RECIPIENT = 'dark-table';
 const GAS_100_TGAS = '100000000000000';
 
+/**
+ * A real Buffer for wallet-selector's `Buffer.isBuffer` check. `Buffer` is not a browser global:
+ * the bundler injects its polyfill into modules that name it, so name it here directly.
+ */
+function toBuffer(bytes: Uint8Array): Buffer {
+  return Buffer.from(bytes);
+}
+
 function nonceBytes(nonce?: string | Uint8Array): Uint8Array {
   if (nonce instanceof Uint8Array) {
     if (nonce.length !== 32) return sha256(nonce);
@@ -297,8 +305,9 @@ export function NearWalletProvider({
       const signed = await wallet.signMessage({
         message: LOGIN_MESSAGE,
         recipient: LOGIN_RECIPIENT,
-        // Wallets call Buffer.from(nonce) internally; a Uint8Array is accepted.
-        nonce: bytes as unknown as Buffer,
+        // wallet-selector checks Buffer.isBuffer(nonce): hand it a real Buffer (the bundler's
+        // Buffer polyfill is the one the wallet code sees), not a plain Uint8Array.
+        nonce: toBuffer(bytes),
       });
       if (!signed) return null;
       return {
