@@ -55,3 +55,6 @@ e2e/screenshots/
 e2e/.logs/
 e2e/.test-results/
 playwright-report/
+
+# teaser footage and renders
+e2e/footage/
