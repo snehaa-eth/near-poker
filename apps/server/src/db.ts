@@ -371,6 +371,10 @@ const hostedAgentSchema = new Schema(
     encryptedNearAiKey: { type: String, required: true },
     encryptedAgentPrivateKey: { type: String, required: true },
     ownerTokenHash: { type: String, required: true },
+    /** Extra manage-link tokens (sha256) issued to the linked wallet on other devices; newest last, max 10. */
+    deviceTokenHashes: { type: [String], default: [] },
+    /** NEAR account that linked this agent (optional "my agents" across devices). */
+    ownerWallet: { type: String, default: null, index: true },
     /** idle | running | error | deleted (live table/queue state is derived at read time) */
     status: { type: String, default: 'idle', index: true },
     statusDetail: { type: String, default: '' },
@@ -397,6 +401,8 @@ export type HostedAgentDoc = {
   encryptedNearAiKey: string;
   encryptedAgentPrivateKey: string;
   ownerTokenHash: string;
+  deviceTokenHashes?: string[];
+  ownerWallet?: string | null;
   status: 'idle' | 'running' | 'error' | 'deleted';
   statusDetail: string;
   wantRunning: boolean;

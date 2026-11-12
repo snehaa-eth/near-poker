@@ -9,14 +9,15 @@ import { cn } from '~/lib/utils';
 
 import { AgentAvatar } from '~/components/agent-avatar';
 import { type Status, StatusPill } from '~/components/ui/badge';
-import { buttonVariants } from '~/components/ui/button';
+import { Button, buttonVariants } from '~/components/ui/button';
 import { Card } from '~/components/ui/card';
 import { SkeletonRows } from '~/components/ui/skeleton';
 import { EmptyState, ErrorState } from '~/components/ui/states';
 
-import { ArrowRight, Bot } from 'lucide-react';
+import { ArrowRight, Bot, Loader2 } from 'lucide-react';
 
-import { type SavedAgent, loadSavedAgents } from './saved-agents';
+import { type SavedAgent, loadSavedAgents, saveAgent } from './saved-agents';
+import { useWalletProof } from './wallet-proof';
 
 export const AGENT_STATE: Record<HostedAgentPublic['state'], { label: string; status: Status }> = {
   playing: { label: 'Playing', status: 'playing' },
@@ -30,6 +31,27 @@ export function AgentsList() {
   const [agents, setAgents] = useState<HostedAgentPublic[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [mine, setMine] = useState<SavedAgent[]>([]);
+  const { prove } = useWalletProof();
+  const [finding, setFinding] = useState(false);
+  const [findNote, setFindNote] = useState<string | null>(null);
+  async function findMine() {
+    setFinding(true);
+    setFindNote(null);
+    try {
+      const r = await hostedApi.mine(await prove());
+      for (const a of r.agents) saveAgent({ id: a.agentId, name: a.name, token: a.token });
+      setMine(loadSavedAgents());
+      setFindNote(
+        r.agents.length
+          ? `Found ${r.agents.length} agent${r.agents.length === 1 ? '' : 's'} linked to ${r.wallet}.`
+          : `No agents are linked to ${r.wallet} yet. Open an agent with its manage link and press “Link my NEAR wallet”.`
+      );
+    } catch (e) {
+      setFindNote((e as Error).message.replace(/^[A-Za-z]+: /, ''));
+    } finally {
+      setFinding(false);
+    }
+  }
   const load = () => {
     setFailed(false);
     setAgents(null);
@@ -44,12 +66,27 @@ export function AgentsList() {
   }, []);
   return (
     <div className='flex flex-col gap-12'>
-      {mine.length ? (
-        <section aria-labelledby='mine-h'>
-          <h2 id='mine-h' className='text-h3 font-semibold'>
-            Your agents
-          </h2>
-          <p className='mt-1 text-caption text-fg-subtle'>Created in this browser. Manage links stay on this device.</p>
+      <section aria-labelledby='mine-h'>
+        <div className='flex flex-wrap items-end justify-between gap-3'>
+          <div>
+            <h2 id='mine-h' className='text-h3 font-semibold'>
+              Your agents
+            </h2>
+            <p className='mt-1 text-caption text-fg-subtle'>
+              {mine.length ? 'Remembered by this browser.' : 'Agents you create in this browser appear here.'} Created them somewhere else? Use your NEAR wallet (optional).
+            </p>
+          </div>
+          <Button variant='ghost' disabled={finding} onClick={() => void findMine()}>
+            {finding ? <Loader2 className='animate-spin' aria-hidden /> : null}
+            Show my agents
+          </Button>
+        </div>
+        {findNote ? (
+          <p role='status' className='mt-2 text-caption text-fg-muted'>
+            {findNote}
+          </p>
+        ) : null}
+        {mine.length ? (
           <ul className='mt-4 flex flex-wrap gap-2'>
             {mine.map((a) => (
               <li key={a.id}>
@@ -61,8 +98,8 @@ export function AgentsList() {
               </li>
             ))}
           </ul>
-        </section>
-      ) : null}
+        ) : null}
+      </section>
       <section aria-labelledby='all-h'>
         <h2 id='all-h' className='text-h3 font-semibold'>
           All hosted agents

@@ -165,6 +165,23 @@ function normalizeWallet(raw: unknown) {
   return wallet.length >= 2 && wallet.length <= 128 ? wallet : null;
 }
 
+/**
+ * Prove control of a NEAR account with a one-off NEP-413 signature (same message, recipient and
+ * server nonce as login), without creating a session. Used by hosted agents' "my agents".
+ */
+export async function proveWallet(raw: unknown): Promise<{ ok: true; wallet: string } | { ok: false; error: string }> {
+  const proof = parseNearProof(raw);
+  if (!proof) return { ok: false, error: 'NearProofRequired' };
+  const verified = await verifyNearProof(proof, {
+    checkAccessKey: accessKeyChecker ?? (isArenaTestMode() ? skipAccessKeyCheck : undefined),
+  });
+  if (!verified.ok) return { ok: false, error: `InvalidNearProof: ${verified.reason}` };
+  // Always demand a server-issued, single-use nonce here (no client-made nonces, in any mode).
+  const nonceOk = consumeLoginNonce(proof.nonce, { near: true });
+  if (!nonceOk.ok) return { ok: false, error: `InvalidNearProof: ${nonceOk.reason}` };
+  return { ok: true, wallet: proof.accountId };
+}
+
 export const authRouter = Router();
 
 /** Fresh NEP-413 nonce for the wallet to sign (required when CHAIN=near). */

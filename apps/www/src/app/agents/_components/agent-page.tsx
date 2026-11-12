@@ -27,6 +27,7 @@ import { ArrowLeft, ArrowRight, ArrowUpRight, Bot, Download, Loader2, Play, Squa
 import { AGENT_STATE } from './agents-list';
 
 import { forgetAgent, loadSavedAgents, saveAgent } from './saved-agents';
+import { useWalletProof } from './wallet-proof';
 
 type View = HostedAgentPublic | HostedAgentOwner;
 const isOwner = (v: View | null): v is HostedAgentOwner => Boolean(v && 'owner' in v && v.owner);
@@ -304,6 +305,7 @@ function OwnerPanel({
       </Card>
 
       {!deleted ? <EventJoin owner={owner} token={token} busy={busy} running={running} act={act} /> : null}
+      {!deleted ? <WalletLink owner={owner} token={token} busy={busy} act={act} /> : null}
 
       {editing ? (
         <Card className='mt-4'>
@@ -516,8 +518,10 @@ function WithdrawCard({
     <Card className='p-4 sm:p-4'>
       <p className='font-semibold'>Withdraw chips</p>
       <p className='mt-1 text-caption text-fg-muted'>
-        Takes all {owner.chips} chips out of the vault and sends the test NEAR to your own NEAR testnet account
-        (1 chip = 0.001 NEAR, a tiny reserve stays on {owner.walletAddress}). No real-money value.
+        {(owner.chips ?? 0) > 0
+          ? `Takes its ${owner.chips} chips out of the vault and sends the test NEAR to your own NEAR testnet account (1 chip = 0.001 NEAR).`
+          : 'No chips left in the vault. This sends the test NEAR still sitting in the agent’s wallet to your own testnet account.'}{' '}
+        A tiny reserve stays on {owner.walletAddress}. No real-money value.
       </p>
       {running ? (
         <p className='mt-3 text-caption text-fg-subtle'>Stop the agent first; chips can’t leave mid-hand.</p>
@@ -553,6 +557,62 @@ function WithdrawCard({
           {result}
         </p>
       ) : null}
+    </Card>
+  );
+}
+
+/** Optional: link this agent to a NEAR wallet so "Show my agents" finds it on any device. */
+function WalletLink({
+  owner,
+  token,
+  busy,
+  act,
+}: {
+  owner: HostedAgentOwner;
+  token: string;
+  busy: string | null;
+  act: (name: string, fn: () => Promise<unknown>, okMsg?: string) => Promise<void>;
+}) {
+  const { prove } = useWalletProof();
+  const linked = owner.ownerWallet ?? null;
+  return (
+    <Card className='mt-4 p-4 sm:p-4'>
+      <div className='flex flex-wrap items-center justify-between gap-3'>
+        <div className='min-w-0'>
+          <p className='font-semibold'>
+            Find it from any device <span className='font-normal text-fg-subtle'>· optional</span>
+          </p>
+          <p className='mt-1 text-caption text-fg-muted'>
+            {linked
+              ? `Linked to ${linked}. Sign in with that wallet on the Agents page to see it anywhere.`
+              : 'Link a NEAR wallet and this agent shows up under “Show my agents” on any browser. Your manage link keeps working either way.'}
+          </p>
+        </div>
+        {linked ? (
+          <Button
+            variant='ghost'
+            disabled={busy !== null}
+            onClick={() => void act('unlink', () => hostedApi.unlinkWallet(owner.agentId, token), 'Unlinked. Your manage link still works.')}
+          >
+            Unlink
+          </Button>
+        ) : (
+          <Button
+            variant='secondary'
+            disabled={busy !== null}
+            onClick={() =>
+              void act(
+                'link',
+                async () => hostedApi.linkWallet(owner.agentId, token, await prove()),
+                'Linked. It will show up under “Show my agents” wherever you sign in.'
+              )
+            }
+          >
+            {busy === 'link' ? <Loader2 className='animate-spin' aria-hidden /> : null}
+            Link my NEAR wallet
+          </Button>
+        )}
+      </div>
     </Card>
   );
 }

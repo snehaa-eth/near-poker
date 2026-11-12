@@ -29,6 +29,7 @@ import { RateLimiter } from './rate-limit.js';
 import { isRunning, liveGameId, liveLogs, startAgent, stopAgent } from './runner.js';
 import { chipsOf, statsFor, tableOf } from './stats.js';
 import { WalletError, createWallet, withdrawWallet } from './wallet.js';
+import { proveWallet } from '../auth.js';
 
 export const hostedRouter = Router();
 
@@ -91,9 +92,15 @@ async function load(req: Request): Promise<HostedAgentDoc | null> {
   return HostedAgentModel.findOne({ agentId: id }).lean<HostedAgentDoc>();
 }
 
+/** The original manage-link token, or one issued to the linked wallet on another device. */
+function isOwnerToken(doc: HostedAgentDoc, tok: unknown): boolean {
+  if (checkOwnerToken(tok, doc.ownerTokenHash)) return true;
+  return (doc.deviceTokenHashes ?? []).some((h) => checkOwnerToken(tok, h));
+}
+
 async function loadOwned(req: Request, res: Response): Promise<HostedAgentDoc | null> {
   const doc = await load(req);
-  if (!doc || !checkOwnerToken(tokenOf(req), doc.ownerTokenHash)) {
+  if (!doc || !isOwnerToken(doc, tokenOf(req))) {
     // Same answer for "no such agent" and "wrong token".
     fail(res, doc ? 403 : 404, doc ? 'BadOwnerToken' : 'NotFound');
     return null;
@@ -129,6 +136,7 @@ async function ownerView(doc: HostedAgentDoc) {
     customPrompt: doc.customPrompt,
     maxCalls: doc.maxCalls,
     eventId: doc.eventId,
+    ownerWallet: doc.ownerWallet ?? null,
     // while running, the live state (queued / playing) says it all; keep only a pending stop
     statusDetail: isRunning(doc.agentId) ? (doc.statusDetail === 'stopping after this hand' ? doc.statusDetail : '') : doc.statusDetail,
     chips: await chipsOf(doc.walletAddress),
@@ -238,13 +246,54 @@ hostedRouter.post('/', async (req, res) => {
   }
 });
 
+/**
+ * Optional wallet link. Owner (manage link) + a NEP-413 proof → this agent shows up under
+ * "my agents" for that NEAR account on any device. Agents without a link keep working as before.
+ */
+hostedRouter.post('/:id/link-wallet', async (req, res) => {
+  const doc = await loadOwned(req, res);
+  if (!doc) return;
+  if (doc.status === 'deleted') return fail(res, 410, 'Deleted');
+  const p = await proveWallet((req.body as { nearProof?: unknown } | undefined)?.nearProof);
+  if (!p.ok) return fail(res, 401, p.error);
+  await HostedAgentModel.updateOne({ agentId: doc.agentId }, { ownerWallet: p.wallet });
+  res.json({ ownerWallet: p.wallet });
+});
+
+hostedRouter.post('/:id/unlink-wallet', async (req, res) => {
+  const doc = await loadOwned(req, res);
+  if (!doc) return;
+  await HostedAgentModel.updateOne({ agentId: doc.agentId }, { ownerWallet: null, deviceTokenHashes: [] });
+  res.json({ ownerWallet: null });
+});
+
+/**
+ * "My agents": a NEP-413 proof → every agent linked to that wallet, each with a fresh manage token
+ * for this device (the original link keeps working; at most 10 device tokens are kept per agent).
+ */
+hostedRouter.post('/mine', async (req, res) => {
+  const p = await proveWallet((req.body as { nearProof?: unknown } | undefined)?.nearProof);
+  if (!p.ok) return fail(res, 401, p.error);
+  const docs = await HostedAgentModel.find({ ownerWallet: p.wallet, status: { $ne: 'deleted' } })
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean<HostedAgentDoc[]>();
+  const agents = [];
+  for (const d of docs) {
+    const { token, hash } = newOwnerToken();
+    await HostedAgentModel.updateOne({ agentId: d.agentId }, { $push: { deviceTokenHashes: { $each: [hash], $slice: -10 } } });
+    agents.push({ agentId: d.agentId, name: d.name, token, manageUrl: `/agents/${d.agentId}?token=${token}` });
+  }
+  res.json({ wallet: p.wallet, agents });
+});
+
 hostedRouter.get('/:id', async (req, res) => {
   try {
     const doc = await load(req);
     if (!doc) return fail(res, 404, 'NotFound');
     const tok = tokenOf(req);
     if (tok !== undefined) {
-      if (!checkOwnerToken(tok, doc.ownerTokenHash)) return fail(res, 403, 'BadOwnerToken');
+      if (!isOwnerToken(doc, tok)) return fail(res, 403, 'BadOwnerToken');
       return res.json(await ownerView(doc));
     }
     if (doc.status === 'deleted') return fail(res, 404, 'NotFound');

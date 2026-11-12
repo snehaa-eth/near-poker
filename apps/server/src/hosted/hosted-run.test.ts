@@ -153,6 +153,47 @@ describe('hosted agents (off-chain test path)', () => {
     assert.equal((await call(`/hosted-agents/${owners['long-bot']!.id}/play`, { body: {}, token: 'wrong-token-wrong-token' })).status, 403);
   });
 
+  it('optional wallet link: link with a NEP-413 proof, then "my agents" on another device', async () => {
+    const { KeyPair, KeyPairSigner } = await import('near-api-js');
+    const kp = KeyPair.fromRandom('ed25519');
+    const proof = async (accountId: string) => {
+      const n = await call('/auth/nonce');
+      const nonce = new Uint8Array(Buffer.from(n.json.nonce, 'base64'));
+      const signed = await new KeyPairSigner(kp).signNep413Message(accountId, { message: n.json.message, recipient: n.json.recipient, nonce });
+      return {
+        accountId,
+        publicKey: kp.getPublicKey().toString(),
+        signature: Buffer.from(signed.signature).toString('base64'),
+        message: n.json.message,
+        recipient: n.json.recipient,
+        nonce: n.json.nonce,
+      };
+    };
+    const own = owners['long-bot']!;
+    // Without the manage link: refused. With it + a proof: linked.
+    assert.equal((await call(`/hosted-agents/${own.id}/link-wallet`, { body: { nearProof: await proof('owner.testnet') } })).status, 403);
+    const linked = await call(`/hosted-agents/${own.id}/link-wallet`, { token: own.token, body: { nearProof: await proof('owner.testnet') } });
+    assert.equal(linked.status, 200, JSON.stringify(linked.json));
+    assert.equal(linked.json.ownerWallet, 'owner.testnet');
+    // A reused nonce is refused.
+    const p1 = await proof('owner.testnet');
+    assert.equal((await call('/hosted-agents/mine', { body: { nearProof: p1 } })).status, 200);
+    assert.equal((await call('/hosted-agents/mine', { body: { nearProof: p1 } })).status, 401);
+    // "My agents" on a new device: a fresh token that works, and the old link still works.
+    const mine = await call('/hosted-agents/mine', { body: { nearProof: await proof('owner.testnet') } });
+    assert.deepEqual(mine.json.agents.map((a: { name: string }) => a.name), ['long-bot']);
+    const fresh = mine.json.agents[0].token as string;
+    assert.notEqual(fresh, own.token);
+    assert.equal((await call(`/hosted-agents/${own.id}`, { token: fresh })).json.owner, true);
+    assert.equal((await call(`/hosted-agents/${own.id}`, { token: own.token })).json.ownerWallet, 'owner.testnet');
+    // Someone else's wallet sees nothing.
+    assert.deepEqual((await call('/hosted-agents/mine', { body: { nearProof: await proof('stranger.testnet') } })).json.agents, []);
+    // Unlink: device tokens stop working, the original link keeps working.
+    assert.equal((await call(`/hosted-agents/${own.id}/unlink-wallet`, { token: own.token, body: {} })).status, 200);
+    assert.equal((await call(`/hosted-agents/${own.id}`, { token: fresh })).status, 403);
+    assert.equal((await call(`/hosted-agents/${own.id}`, { token: own.token })).json.ownerWallet, null);
+  });
+
   it('rate limits creation per IP', async () => {
     assert.equal((await call('/hosted-agents', { body: { ...base, name: 'third-bot' } })).status, 201);
     const r = await call('/hosted-agents', { body: { ...base, name: 'fourth-bot' } });

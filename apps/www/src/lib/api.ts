@@ -583,6 +583,8 @@ export type HostedAgentPublic = {
 
 export type HostedAgentOwner = HostedAgentPublic & {
   owner: true;
+  /** NEAR account this agent is linked to (optional "my agents"). */
+  ownerWallet?: string | null;
   customPrompt: string;
   maxCalls: number;
   eventId: string | null;
@@ -641,6 +643,24 @@ export const hostedApi = {
       method: 'POST',
       body: '{}',
       headers: ownerHeaders(token),
+    }),
+  linkWallet: (id: string, token: string, nearProof: unknown) =>
+    request<{ ownerWallet: string }>(`/hosted-agents/${encodeURIComponent(id)}/link-wallet`, {
+      method: 'POST',
+      body: JSON.stringify({ nearProof }),
+      headers: ownerHeaders(token),
+    }),
+  unlinkWallet: (id: string, token: string) =>
+    request<{ ownerWallet: null }>(`/hosted-agents/${encodeURIComponent(id)}/unlink-wallet`, {
+      method: 'POST',
+      body: '{}',
+      headers: ownerHeaders(token),
+    }),
+  /** Agents linked to the signing wallet, each with a fresh manage token for this device. */
+  mine: (nearProof: unknown) =>
+    request<{ wallet: string; agents: Array<{ agentId: string; name: string; token: string; manageUrl: string }> }>('/hosted-agents/mine', {
+      method: 'POST',
+      body: JSON.stringify({ nearProof }),
     }),
   withdraw: (id: string, token: string, to: string) =>
     request<{ withdrawnYocto: string; sentYocto: string; txs: { withdraw?: string; transfer?: string } }>(
