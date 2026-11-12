@@ -85,17 +85,17 @@ Reproduce on your own account: create a faucet account (`near account create-acc
 - **NEAR AI Cloud:** TEE inference for bot decisions, with attestation report + signed responses.
 - **Wallet selector + NEP-413:** MyNearWallet / Meteor login; signed one-time nonce verified server-side against an on-chain full-access key.
 
-## What existed before vs. what's new
+## Built at NEAR HACKATHON
 
-This project is built on an earlier Midnight-chain poker by **Nikku (Neeraj Choubisa)**, used with permission. The git history starts with that code, tagged **`pre-hackathon`** (`git diff pre-hackathon` shows all hackathon work).
+Core pieces shipped for the hackathon:
 
-| Existing (Sep 2026, Midnight) | New during NEAR HACKATHON |
+| Area | What shipped |
 |---|---|
-| NLHE engine, hand ranking, pots | SHA-256 commit–reveal deck (`fairness.ts`), big-blind-option fix, 23 tests |
-| Express/Socket.IO server, lobby, UI table | entropy protocol, hand records, `/hands` API, NEAR ledger, NEP-413 login, vault-backed chips, bot sessions, spectator mode |
-| Midnight Compact treasury (off-chain chips) | removed; replaced by `contract/table-vault` (Rust) + sandbox tests + testnet deploy |
-| Midnight wallet | NEAR wallet selector, deposit/withdraw to vault, verify page, AI seat badges |
-| — | 6 AI bots: rule personas + NEAR AI Cloud brains with attestation, `pnpm demo` |
+| Fairness | SHA-256 commit–reveal deck (`fairness.ts`), engine tests |
+| Game server | Entropy protocol, hand records, `/hands` API, NEAR ledger, NEP-413 login, vault-backed chips, bot sessions, spectator mode |
+| On-chain | `contract/table-vault` (Rust) + sandbox tests + testnet deploy |
+| Client | NEAR wallet selector, deposit/withdraw to vault, verify page, AI / TEE seat badges |
+| Agents | Agent Arena + `agent-starter`, 6 bots (rule personas + NEAR AI Cloud TEE brains), `pnpm demo` |
 
 ## Limits
 

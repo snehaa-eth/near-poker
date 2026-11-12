@@ -134,13 +134,51 @@ export function mockMove(
   };
 }
 
+/** Same formula as server `blindsForLobby` — keep mock stakes realistic. */
+function mockBlinds(minChips: number) {
+  const bigBlind = Math.max(2, Math.floor(Math.max(minChips, 20) / 10));
+  const smallBlind = Math.max(1, Math.floor(bigBlind / 2));
+  return { minChips, smallBlind, bigBlind };
+}
+
 export const mockArenaTables = (): ArenaTable[] => [
   {
     gameId: MOCK_GAME_ID,
     name: 'Arena #1',
     status: 'playing',
     handsPlayed: 42,
-    seats: MOCK_AGENTS.slice(0, 3).map((a, i) => ({
+    ...mockBlinds(100),
+    seats: MOCK_AGENTS.slice(0, 6).map((a, i) => ({
+      seat: i,
+      playerId: a.walletAddress,
+      nickname: a.nickname,
+      walletAddress: a.walletAddress,
+      model: a.model,
+      chips: [2280, 1680, 880, 1380, 980, 680][i],
+    })),
+  },
+  {
+    gameId: 'mock-arena-2',
+    name: 'Arena #2',
+    status: 'waiting',
+    handsPlayed: 12,
+    ...mockBlinds(100),
+    seats: MOCK_AGENTS.slice(0, 2).map((a, i) => ({
+      seat: i,
+      playerId: a.walletAddress,
+      nickname: a.nickname,
+      walletAddress: a.walletAddress,
+      model: a.model,
+      chips: [1500, 1500][i],
+    })),
+  },
+  {
+    gameId: 'mock-arena-3',
+    name: 'Arena #3',
+    status: 'shuffling',
+    handsPlayed: 7,
+    ...mockBlinds(200),
+    seats: MOCK_AGENTS.slice(2, 5).map((a, i) => ({
       seat: i,
       playerId: a.walletAddress,
       nickname: a.nickname,
@@ -149,11 +187,32 @@ export const mockArenaTables = (): ArenaTable[] => [
     })),
   },
   {
-    gameId: 'mock-arena-2',
-    name: 'Arena #2',
-    status: 'waiting',
-    handsPlayed: 0,
-    seats: 2,
+    gameId: 'mock-arena-4',
+    name: 'Heads-up ladder',
+    status: 'playing',
+    handsPlayed: 128,
+    ...mockBlinds(250),
+    seats: MOCK_AGENTS.slice(0, 2).map((a, i) => ({
+      seat: i,
+      playerId: a.walletAddress,
+      nickname: a.nickname,
+      walletAddress: a.walletAddress,
+      model: a.model,
+    })),
+  },
+  {
+    gameId: 'mock-arena-5',
+    name: 'Arena #5',
+    status: 'ended',
+    handsPlayed: 64,
+    ...mockBlinds(100),
+    seats: MOCK_AGENTS.slice(3, 6).map((a, i) => ({
+      seat: i,
+      playerId: a.walletAddress,
+      nickname: a.nickname,
+      walletAddress: a.walletAddress,
+      model: a.model,
+    })),
   },
 ];
 
@@ -184,6 +243,7 @@ export function mockArenaView(gameId: string): PublicGameView {
   // UI card ids are unique 0..51 (rank = id%13, suit = floor(id/13); A=12).
   // Board: 4♥ Q♣ K♣ A♠ K♥ — hole cards must not repeat those.
   const board = [15, 49, 50, 12, 24]; // 4H, QC, KC, AS, KH
+  // Folded earlier streets → street bet is 0 on the river.
   const foldedSeats = new Set([2, 5]);
   const players = MOCK_AGENTS.map((a, i) => {
     const last = mockMove(i, foldedSeats.has(i) ? 'fold' : 'call', 40);
@@ -191,10 +251,10 @@ export function mockArenaView(gameId: string): PublicGameView {
       id: a.walletAddress,
       nickname: a.nickname,
       seat: i,
-      chipsInPot: foldedSeats.has(i) ? 20 : 120,
+      chipsInPot: foldedSeats.has(i) ? 0 : 120,
       folded: foldedSeats.has(i),
       shuffled: true,
-      // Shark: 2♣ A♦ · Grinder: Q♠ 6♠ — distinct from the board
+      // Shark: 2♣ A♦ · Grinder: Q♠ 5♠ — distinct from the board
       holeCards: i === 0 ? [39, 38] : i === 1 ? [10, 4] : [-1, -1],
       chosenCommunity: [],
       weight: 0,
@@ -221,8 +281,9 @@ export function mockArenaView(gameId: string): PublicGameView {
     highestBet: 120,
     minRaise: 40,
     dealerSeat: 0,
+    // Remaining stacks (street bet already deducted for active seats).
     stacksByPlayerId: Object.fromEntries(
-      players.map((p, i) => [p.id, [2400, 1800, 900, 1500, 1100, 700][i]!])
+      players.map((p, i) => [p.id, [2280, 1680, 880, 1380, 980, 680][i]!])
     ),
     nextSeat: 1,
     nextPlayerId: players[1]!.id,

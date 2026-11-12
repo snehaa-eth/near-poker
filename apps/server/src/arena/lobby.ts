@@ -16,7 +16,7 @@ import {
   prepareArenaHand,
 } from '../game-store.js';
 import { isNearChain } from '../near.js';
-import type { StoredGame } from '../poker-bridge.js';
+import { blindsForLobby, type StoredGame } from '../poker-bridge.js';
 import { getAttestationCache } from './attestation.js';
 import { ARENA_MAX_SEATS, getArenaConfig } from './config.js';
 import { setDeclaredModel } from './moves.js';
@@ -324,10 +324,18 @@ export async function listArenaTables() {
   for (const t of tables.values()) {
     const state = await getGame(t.gameId);
     if (!state) continue;
+    const minChips = Math.max(0, Math.floor(state.minChips ?? getArenaConfig().minChips));
+    const liveBlinds = state.nlhe?.config;
+    const blinds = liveBlinds
+      ? { smallBlind: liveBlinds.smallBlind, bigBlind: liveBlinds.bigBlind }
+      : blindsForLobby(minChips);
     const stacks = state.nlhe ? Object.fromEntries(state.nlhe.players.map((p) => [p.id, p.stack])) : {};
     out.push({
       gameId: t.gameId,
       name: t.name,
+      minChips,
+      smallBlind: blinds.smallBlind,
+      bigBlind: blinds.bigBlind,
       seats: [...state.players]
         .sort((a, b) => a.seat - b.seat)
         .map((p) => {

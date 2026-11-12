@@ -58,3 +58,6 @@ playwright-report/
 
 # teaser footage and renders
 e2e/footage/
+
+# local agent wallets (keys)
+.agent-wallets.json

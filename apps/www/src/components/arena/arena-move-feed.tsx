@@ -1,19 +1,25 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { ArenaMoveRecord } from '~/lib/api';
 import { api } from '~/lib/api';
 import { mockArenaMoves, receiptUrl, shortModel } from '~/lib/arena';
 import { formatTokens } from '~/lib/format';
+import { isSoundMuted, playSound, preloadSounds } from '~/lib/sounds';
+import { playActionSound } from '~/lib/table-sfx';
 import { cn } from '~/lib/utils';
 
 import { useQuery } from '@tanstack/react-query';
+import { ensureSoundOn } from '~/components/sound-toggle';
 
-import { ArrowUpRight, ChevronDown } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, Volume2 } from 'lucide-react';
 
 const ROW =
   'grid grid-cols-[1.75rem_minmax(0,1fr)_4.25rem_3rem_3.25rem] items-center gap-x-2 px-3';
+
+/** Delay between mock moves during the replay demo. */
+const MOCK_MOVE_MS = 1100;
 
 function actionTone(action: string) {
   const a = action.toLowerCase();
@@ -83,11 +89,14 @@ export function ArenaMoveFeed({
   mock = false,
   nextPlayerNickname,
   defaultOpen = false,
+  onMove,
 }: {
   handId?: string | null;
   mock?: boolean;
   nextPlayerNickname?: string | null;
   defaultOpen?: boolean;
+  /** Fired for each newly revealed move — used for on-table seat toasts. */
+  onMove?: (move: ArenaMoveRecord) => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const { data } = useQuery({
@@ -103,14 +112,93 @@ export function ArenaMoveFeed({
     retry: false,
   });
 
-  const moves = data ?? [];
+  const allMoves = data ?? [];
+  const heardRef = useRef<string | null>(null);
+
+  /** Mock: reveal moves one-by-one so SFX can fire like a live hand. */
+  const [mockCount, setMockCount] = useState(0);
+  const [mockPlaying, setMockPlaying] = useState(false);
+  const mockTimerRef = useRef<number | null>(null);
+
+  const moves = mock ? allMoves.slice(0, mockCount) : allMoves;
   const latest = moves.length > 0 ? moves[moves.length - 1]! : null;
+
+  useEffect(() => {
+    preloadSounds();
+  }, []);
+
+  // Live + mock: SFX + seat toast on each newly revealed move.
+  // Mock skips priming so the first replayed move still flashes on the table.
+  useEffect(() => {
+    if (!latest) return;
+    const key = `${latest.completionId}:${latest.action}:${latest.verifiedAt ?? ''}`;
+    if (!mock && heardRef.current === null) {
+      heardRef.current = key;
+      return;
+    }
+    if (heardRef.current === key) return;
+    heardRef.current = key;
+    playActionSound(latest.action);
+    onMove?.(latest);
+  }, [latest, mock, onMove]);
+
+  useEffect(() => {
+    heardRef.current = null;
+  }, [handId]);
+
+  // Mock: play deal, then walk the move list with Pepper SFX.
+  const startMockReplay = () => {
+    if (mockTimerRef.current != null) {
+      window.clearInterval(mockTimerRef.current);
+      mockTimerRef.current = null;
+    }
+    // Replay is an explicit play intent — unmute if the user had muted.
+    if (isSoundMuted()) ensureSoundOn();
+    heardRef.current = null;
+    setMockCount(0);
+    setMockPlaying(true);
+    playSound('shuffle', 0.5);
+    playSound('cardDeal', 0.7);
+
+    let i = 0;
+    mockTimerRef.current = window.setInterval(() => {
+      const script = allMoves;
+      if (i >= script.length) {
+        if (mockTimerRef.current != null) {
+          window.clearInterval(mockTimerRef.current);
+          mockTimerRef.current = null;
+        }
+        setMockPlaying(false);
+        playSound('win', 0.7);
+        return;
+      }
+      const move = script[i]!;
+      i += 1;
+      setMockCount(i);
+      // SFX + onMove run via the `latest` effect when mockCount updates.
+    }, MOCK_MOVE_MS);
+  };
+
+  useEffect(() => {
+    if (!mock || allMoves.length === 0) return;
+    // Auto-start once moves are ready (needs a prior user gesture for audio
+    // in some browsers — the Replay button covers that case).
+    startMockReplay();
+    return () => {
+      if (mockTimerRef.current != null) {
+        window.clearInterval(mockTimerRef.current);
+        mockTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- replay when script loads
+  }, [mock, allMoves.length]);
 
   const waitingLabel = useMemo(() => {
     if (latest) return null;
+    if (mock && mockPlaying) return 'Dealing mock hand…';
     if (nextPlayerNickname) return `Waiting on ${nextPlayerNickname}…`;
     return 'Waiting for the first TEE move…';
-  }, [latest, nextPlayerNickname]);
+  }, [latest, mock, mockPlaying, nextPlayerNickname]);
 
   return (
     <div className='overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm'>
@@ -143,8 +231,22 @@ export function ArenaMoveFeed({
         ) : (
           <p className='flex-1 text-sm text-neutral-500'>{waitingLabel}</p>
         )}
+        {mock ? (
+          <button
+            type='button'
+            onClick={startMockReplay}
+            disabled={mockPlaying || allMoves.length === 0}
+            className='inline-flex shrink-0 items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-40'
+            title='Replay mock hand with sound'
+          >
+            <Volume2 className='h-3.5 w-3.5' />
+            {mockPlaying ? 'Playing…' : 'Replay SFX'}
+          </button>
+        ) : null}
         <span className='shrink-0 tabular-nums text-xs text-neutral-400'>
-          {moves.length} move{moves.length === 1 ? '' : 's'}
+          {moves.length}
+          {mock ? `/${allMoves.length}` : ''} move
+          {moves.length === 1 ? '' : 's'}
         </span>
       </div>
 
@@ -163,7 +265,9 @@ export function ArenaMoveFeed({
         <div className='max-h-56 overflow-y-auto border-t border-neutral-100'>
           {moves.length === 0 ? (
             <p className='px-3 py-4 text-sm text-neutral-500'>
-              No accepted TEE moves for this hand yet.
+              {mock
+                ? 'Mock hand starting — moves appear with sound…'
+                : 'No accepted TEE moves for this hand yet.'}
             </p>
           ) : (
             <>

@@ -7,7 +7,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PublicGameView } from '~/lib/api';
 import { ARENA_TURN_SECONDS } from '~/lib/arena';
 import { positionLabel } from '~/lib/poker-positions';
-import { playSound } from '~/lib/sounds';
+import {
+  mergeFlashes,
+  useViewActionFlashes,
+  type SeatActionFlash,
+} from '~/lib/seat-action-flash';
+import { playSound, preloadSounds } from '~/lib/sounds';
+import { createTableSfx } from '~/lib/table-sfx';
 import { cn } from '~/lib/utils';
 
 import { toast } from 'sonner';
@@ -41,6 +47,8 @@ interface SleekTableProps {
   showPositions?: boolean;
   /** Offline / dummy table actions. */
   onLocalAction?: (action: LocalTableAction) => void;
+  /** Extra seat toasts (e.g. exact TEE moves from the arena feed). */
+  actionFlashes?: Record<string, SeatActionFlash>;
 }
 
 function formatTurnClock(seconds: number) {
@@ -60,10 +68,13 @@ export const SleekTable = ({
   embedded = false,
   showPositions = false,
   onLocalAction,
+  actionFlashes: externalFlashes,
 }: SleekTableProps) => {
   const { user } = useSession();
   const { socket } = useSocket();
   const seatStacks = stacksByPlayerId ?? view.stacksByPlayerId;
+  const viewFlashes = useViewActionFlashes(view);
+  const actionFlashes = mergeFlashes(viewFlashes, externalFlashes ?? {});
   const defaultStack = stackOverride ?? user?.chips ?? 10000;
   const myStack =
     (view.myPlayerId ? seatStacks?.[view.myPlayerId] : undefined) ??
@@ -89,6 +100,27 @@ export const SleekTable = ({
   const [turnEndsAt, setTurnEndsAt] = useState<number | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(turnSeconds);
   const foldedForTurnRef = useRef<string | null>(null);
+  const tableSfxRef = useRef(createTableSfx());
+
+  useEffect(() => {
+    preloadSounds([
+      'cardDeal',
+      'cardFlip',
+      'chipsBet',
+      'chipsShuffle',
+      'shuffle',
+      'pepperChat',
+      'win',
+    ]);
+  }, []);
+
+  useEffect(() => {
+    tableSfxRef.current = createTableSfx();
+  }, [gameId]);
+
+  useEffect(() => {
+    tableSfxRef.current(view);
+  }, [view]);
 
   useEffect(() => {
     if (!turnKey) {
@@ -120,7 +152,7 @@ export const SleekTable = ({
       if (!onLocalAction && !view.isMyTurn) return;
 
       try {
-        playSound('paajiLose');
+        playSound('cardFlip');
         if (onLocalAction) {
           onLocalAction({ type: 'fold' });
         } else if (socket) {
@@ -158,6 +190,11 @@ export const SleekTable = ({
     inset: embedded,
   });
   const board = view.communityCards.filter((c) => c >= 0);
+  /** Always five board slots: face-up when dealt, face-down before flop/turn/river. */
+  const boardSlots = Array.from({ length: 5 }, (_, i) => {
+    const c = view.communityCards[i];
+    return c != null && c >= 0 ? c : -1;
+  });
   /** Arena table closed: every agent left (or was re-queued). */
   const tableFinished = Boolean(view.arena) && view.players.length === 0;
   /** Arena hands auto-start a few seconds after the previous one ends. */
@@ -222,8 +259,8 @@ export const SleekTable = ({
               <TableFinished gameId={gameId} />
             </div>
           ) : (
-            <div className='absolute left-1/2 top-1/2 z-10 flex w-full -translate-x-1/2 -translate-y-[55%] flex-col items-center gap-3 lg:gap-3.5'>
-              <div className='flex items-center gap-2 rounded-full bg-white/90 px-4 py-1.5 text-[13px] font-medium text-neutral-500 shadow-md backdrop-blur lg:px-5 lg:py-2 lg:text-sm'>
+            <div className='absolute left-1/2 top-1/2 z-10 flex w-full max-w-[28rem] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 px-2'>
+              <div className='flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full bg-white/90 px-3.5 py-1.5 text-[12px] font-medium text-neutral-500 shadow-md backdrop-blur lg:text-[13px]'>
                 {view.gameEnded ? (
                   // The pot has already been paid out; say how the hand ended instead of "Pot 0".
                   <span className='font-semibold text-neutral-800'>
@@ -239,28 +276,50 @@ export const SleekTable = ({
                   </span>
                 ) : (
                   <>
-                    Pot
+                    <span>Pot</span>
                     <ChipAmount
                       value={view.pot}
                       size='sm'
-                      className='text-[13px] text-neutral-900 lg:text-sm'
-                      iconClassName='h-4 w-4'
+                      className='text-[12px] text-neutral-900 lg:text-[13px]'
+                      iconClassName='h-3.5 w-3.5'
                     />
-                    <span className='mx-1 text-neutral-300'>·</span>
+                    <span className='text-neutral-300'>·</span>
                     <span className='font-semibold text-neutral-800'>
                       {view.roundLabel}
                     </span>
+                    {hint ? (
+                      <>
+                        <span className='hidden text-neutral-300 sm:inline'>
+                          ·
+                        </span>
+                        <span className='hidden text-[11px] text-neutral-500 sm:inline'>
+                          {hint}
+                        </span>
+                      </>
+                    ) : null}
                   </>
                 )}
               </div>
 
-              {arenaBetweenHands && view.gameEnded ? (
-                <p className='-mt-1.5 text-[11px] font-medium text-white/85 drop-shadow lg:text-xs'>
-                  Next hand starting…
-                </p>
-              ) : hint ? (
-                <p className='-mt-1.5 text-[11px] font-medium text-white/80 drop-shadow lg:text-xs'>
-                  {hint}
+              <div className='flex items-end gap-1.5 sm:gap-2 lg:gap-2.5'>
+                {boardSlots.map((cardId, i) => (
+                  <SleekCard
+                    key={`board-${i}-${cardId}`}
+                    cardId={cardId}
+                    backSeed={i + 31}
+                    className='hover:-translate-y-1'
+                    size='md'
+                  />
+                ))}
+              </div>
+
+              {board.length === 0 ? (
+                <p className='text-[11px] font-medium text-white/75 drop-shadow'>
+                  {view.gameEnded
+                    ? 'Hand ended before the flop'
+                    : arenaBetweenHands
+                      ? 'Dealing the next hand…'
+                      : 'Pre-flop · board stays face-down'}
                 </p>
               ) : null}
 
@@ -271,47 +330,19 @@ export const SleekTable = ({
                   <Link
                     href={`/verify/${encodeURIComponent(view.fairness.handId)}`}
                     target='_blank'
-                    className='rounded-full bg-emerald-50/95 px-3 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm ring-1 ring-emerald-200 transition hover:bg-white lg:text-xs'
+                    className='rounded-full bg-emerald-50/95 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-800 shadow-sm ring-1 ring-emerald-200 transition hover:bg-white lg:text-[11px]'
                   >
                     ✅ Verify hand
                   </Link>
                 ) : (
                   <span
                     title={`Deck seed hash committed before the deal: ${view.fairness.seedHash}`}
-                    className='rounded-full bg-black/45 px-3 py-1 font-mono text-[11px] text-white/90 shadow-sm backdrop-blur-sm lg:text-xs'
+                    className='rounded-full bg-black/40 px-2.5 py-0.5 font-mono text-[10px] text-white/90 shadow-sm backdrop-blur-sm lg:text-[11px]'
                   >
                     🔒 Deck committed · {view.fairness.seedHash.slice(0, 8)}
                   </span>
                 )
               ) : null}
-
-              <div className='flex min-h-[4.75rem] items-center gap-2 lg:min-h-[5.5rem] lg:gap-2.5 xl:min-h-[6rem]'>
-                {board.length === 0 ? (
-                  <div className='rounded-2xl border border-white/25 bg-black/25 px-5 py-4 text-xs text-white/75 backdrop-blur-sm lg:px-6 lg:text-sm'>
-                    {view.gameEnded
-                      ? 'No community cards: the hand ended before the flop'
-                      : arenaBetweenHands
-                        ? 'Dealing the next hand…'
-                        : 'Waiting for flop'}
-                  </div>
-                ) : (
-                  <>
-                    {board.map((cardId, i) => (
-                      <SleekCard
-                        key={`board-${i}-${cardId}`}
-                        cardId={cardId}
-                        className='hover:-translate-y-0.5'
-                        size='md'
-                      />
-                    ))}
-                    {board.length < 5
-                      ? Array.from({ length: 5 - board.length }).map((_, i) => (
-                          <SleekCard key={`pad-${i}`} cardId={-1} size='md' />
-                        ))
-                      : null}
-                  </>
-                )}
-              </div>
 
               {view.gameEnded && view.winnerNickname ? (
                 <div className='rounded-full bg-neutral-950 px-4 py-1.5 text-sm font-semibold text-white shadow-lg'>
@@ -323,7 +354,11 @@ export const SleekTable = ({
           )}
 
           {ordered.map((player, index) => {
-            const pos = positions[index] ?? { left: '50%', top: '50%' };
+            const pos = positions[index] ?? {
+              left: '50%',
+              top: '50%',
+              anchor: 'bottom' as const,
+            };
             const isMe = player.id === view.myPlayerId;
             const isTurn =
               player.id === view.nextPlayerId && view.status === 'playing';
@@ -345,7 +380,9 @@ export const SleekTable = ({
                     : null
                 }
                 compact={embedded}
+                anchor={pos.anchor}
                 turnSecondsLeft={isTurn && turnActive ? secondsLeft : null}
+                actionFlash={actionFlashes[player.id] ?? null}
                 player={player}
                 stack={seatStacks?.[player.id] ?? defaultStack}
                 avatarUrl={isMe ? user?.avatar : null}
