@@ -109,6 +109,12 @@ export interface TableState {
   /** Running total of all chips in pots + unmatched street bets. */
   potTotal: number;
   lastAggressorSeat: number | null;
+  /**
+   * Seats that already acted on the current street and since then only faced an
+   * incomplete (short all-in) raise: they may call or fold but not re-raise.
+   * Reset by any full bet/raise and at the start of every street.
+   */
+  raiseClosedSeats?: number[];
   result: HandResult | null;
   /** Internal PRNG state (mulberry32). */
   rngState: number;

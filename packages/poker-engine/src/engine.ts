@@ -202,6 +202,7 @@ function startStreet(
       toAct: -1,
       pendingSeats: [],
       lastAggressorSeat: null,
+      raiseClosedSeats: [],
       potTotal: recomputePotTotal(players),
     });
   }
@@ -217,6 +218,7 @@ function startStreet(
     toAct,
     pendingSeats,
     lastAggressorSeat: null,
+    raiseClosedSeats: [],
     potTotal: recomputePotTotal(players),
   };
 }
@@ -403,7 +405,9 @@ export function startHand(
   players = postBlind(players, sbSeat, state.config.smallBlind);
   players = postBlind(players, bbSeat, state.config.bigBlind);
 
-  const bbPosted = players.find((p) => p.seat === bbSeat)!.bet;
+  // A big blind that is all-in for less still sets the full big blind as the
+  // amount to call (standard rule); any excess is returned via the pot layers.
+  const bbPosted = state.config.bigBlind;
 
   let next: TableState = {
     ...state,
@@ -422,6 +426,7 @@ export function startHand(
     result: null,
     actionHistory: [],
     pendingSeats: [],
+    raiseClosedSeats: [],
     toAct: -1,
   };
 
@@ -442,8 +447,13 @@ export function startHand(
     toAct: preflopToAct,
   };
 
-  // Everyone already all-in from blinds → run out board
-  if (next.players.filter(canAct).length <= 1) {
+  // Everyone already all-in from blinds → run out board. A lone player who still
+  // faces a bigger blind must first decide to call or fold.
+  const blindActors = next.players.filter(canAct);
+  if (
+    blindActors.length === 0 ||
+    (blindActors.length === 1 && blindActors[0]!.bet >= next.currentBet)
+  ) {
     return finishStreetOrRunout({ ...next, toAct: -1, pendingSeats: [] });
   }
 
@@ -459,6 +469,12 @@ export function getLegalActions(state: TableState): ActionType[] {
 
   const toCall = state.currentBet - player.bet;
   const actions: ActionType[] = ['fold'];
+
+  if (state.raiseClosedSeats?.includes(player.seat) && toCall > 0) {
+    // Only faced an incomplete raise since acting: call or fold, no re-raise.
+    actions.push(player.stack > toCall ? 'call' : 'all-in');
+    return actions;
+  }
 
   if (toCall <= 0) {
     actions.push('check');
@@ -497,8 +513,9 @@ export function applyAction(
   // Map all-in type onto bet/raise/call semantics
   let type = action.type;
   if (type === 'all-in') {
-    // allowed whenever stack > 0
+    // allowed whenever stack > 0 (unless it would re-raise when raising is closed)
     if (player.stack <= 0) throw new Error('IllegalAction');
+    if (!legal.includes('all-in')) throw new Error('IllegalAction:all-in');
   } else if (!legal.includes(type)) {
     throw new Error(`IllegalAction:${type}`);
   }
@@ -509,6 +526,7 @@ export function applyAction(
   let minRaise = state.minRaise;
   let pendingSeats = [...state.pendingSeats];
   let lastAggressorSeat = state.lastAggressorSeat;
+  let raiseClosedSeats = [...(state.raiseClosedSeats ?? [])];
   let appliedAmount: number | undefined;
 
   const mutate = (fn: (p: EnginePlayer) => EnginePlayer) => {
@@ -577,7 +595,18 @@ export function applyAction(
         minRaise = raiseBy;
         lastAggressorSeat = player.seat;
         pendingSeats = reopenAction(players, player.seat);
+        raiseClosedSeats = [];
       } else {
+        // Seats that already acted (not pending) now face this short raise: no re-raise.
+        // (Only when there was a live bet: an under-minimum all-in *opening* bet still
+        // lets earlier checkers raise.)
+        const acted =
+          currentBet > 0
+            ? players
+                .filter((p) => canAct(p) && p.seat !== player.seat && !pendingSeats.includes(p.seat))
+                .map((p) => p.seat)
+            : [];
+        raiseClosedSeats = [...new Set([...raiseClosedSeats, ...acted])];
         // Short all-in raise: does not reopen for players who already matched
         pendingSeats = removePending(pendingSeats, player.seat);
         // Players who still face a higher bet remain pending
@@ -613,6 +642,7 @@ export function applyAction(
       minRaise = Math.max(state.config.bigBlind, betSize);
       lastAggressorSeat = player.seat;
       pendingSeats = reopenAction(players, player.seat);
+      raiseClosedSeats = [];
       appliedAmount = targetStreetBet;
     } else if (type === 'all-in' && !raising) {
       // Short call all-in
@@ -644,6 +674,7 @@ export function applyAction(
     minRaise,
     pendingSeats,
     lastAggressorSeat,
+    raiseClosedSeats,
     potTotal: recomputePotTotal(players),
     actionHistory: withHistory(state, playerId, type, appliedAmount),
   };
