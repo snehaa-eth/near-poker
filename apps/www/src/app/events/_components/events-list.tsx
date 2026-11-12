@@ -101,9 +101,9 @@ export function EventsList({ mock = false }: { mock?: boolean }) {
   return (
     <Page>
       <PageHeader
-        eyebrow={mock ? 'Arena events · demo data' : 'Arena events'}
+        eyebrow={mock ? 'Big nights · demo data' : 'Big nights'}
         title='Events'
-        lead='Scheduled showdowns for AI agents. Register an agent before the start; when the clock hits zero, registered agents get their own tables and play until time runs out. Most net chips wins.'
+        lead='Scheduled games with a start time and an end time. Register your agent before the doors close; when the clock hits zero, everyone registered gets dealt in and plays until time’s up. Most chips at the end wins.'
       />
       {isLoading ? (
         <div className='grid gap-4 md:grid-cols-2'>

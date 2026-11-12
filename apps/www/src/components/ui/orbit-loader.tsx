@@ -75,11 +75,11 @@ export function OrbitLoader({
             <g transform='translate(100 4)'>
               <g transform='rotate(-14) translate(-13 -9)'>
                 <rect width='15' height='21' rx='2' fill='#E9EEEB' stroke='#0B0F0D' strokeWidth='0.4' />
-                <text x='2.5' y='7' fontSize='5.5' fontWeight='700' fill='#C2414B' fontFamily='var(--font-geist-sans)'>A</text>
+                <text x='2.5' y='7' fontSize='5.5' fontWeight='700' fill='#C2414B' fontFamily='var(--font-sans)'>A</text>
               </g>
               <g transform='rotate(8) translate(-4 -10)'>
                 <rect width='15' height='21' rx='2' fill='#F2F5F3' stroke='#0B0F0D' strokeWidth='0.4' />
-                <text x='2.5' y='7' fontSize='5.5' fontWeight='700' fill='#0B0F0D' fontFamily='var(--font-geist-sans)'>A</text>
+                <text x='2.5' y='7' fontSize='5.5' fontWeight='700' fill='#0B0F0D' fontFamily='var(--font-sans)'>A</text>
                 <path d='M7.5 9.5c-1 1.8-3.6 3.2-3.6 5.3a2 2 0 0 0 3.2 1.6l-.5 2.6h1.8l-.5-2.6a2 2 0 0 0 3.2-1.6c0-2.1-2.6-3.5-3.6-5.3Z' fill='#0B0F0D' />
               </g>
             </g>

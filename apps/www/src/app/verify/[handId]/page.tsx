@@ -4,228 +4,32 @@ import Link from 'next/link';
 
 import React, { useMemo } from 'react';
 
-import { type HandRecord, api } from '~/lib/api';
-import {
-  bytesToHex,
-  computeDeckSeed,
-  dealFromDeck,
-  engineCardLabel,
-  engineIdToUiId,
-  selfTest,
-  sha256Hex,
-  shuffleFromSeed,
-  uiIdToEngineId,
-} from '~/lib/fairness';
-import { MOCK_AGENTS } from '~/lib/arena';
+import { api } from '~/lib/api';
+import { mockArenaMoves } from '~/lib/arena';
+import { engineCardLabel, engineIdToUiId, uiIdToEngineId } from '~/lib/fairness';
 import { getPokerCardImage } from '~/lib/helpers';
+import { demoHand, summarizeHand } from '~/lib/last-hand';
+import { demoRecord, isUiSpace, txList, verifyHand as verify } from '~/lib/verify-hand';
 import { explorerTxUrl } from '~/lib/near/rpc';
 import { cn, errorHandler } from '~/lib/utils';
 
 import { useQuery } from '@tanstack/react-query';
 
 import { HandMoveLog } from '~/components/arena/move-log';
+import { HandReceipt } from '~/components/backroom/hand-receipt';
 import { Button, buttonVariants } from '~/components/ui/button';
 import { Card } from '~/components/ui/card';
 import { Skeleton } from '~/components/ui/skeleton';
 import { EmptyState, ErrorState, Page, PageHeader } from '~/components/ui/states';
 import { Term } from '~/components/ui/term';
 
-import { ArrowUpRight, CheckCircle2, Clock, Link2, RefreshCw, SearchX, ShieldCheck, XCircle } from 'lucide-react';
-
-type CheckStatus = 'pass' | 'fail' | 'pending';
-
-type Check = { label: string; status: CheckStatus; detail?: string };
-
-/**
- * Demo hand served locally at /verify/demo: six seats (the same demo agents as
- * the arena preview), one entropy per seat, all derived in the browser.
- */
-function demoRecord(): HandRecord {
-  const serverSeed = Array.from({ length: 32 }, (_, i) => i.toString(16).padStart(2, '0')).join('');
-  const entropy = MOCK_AGENTS.map((_, i) => ((i * 37 + 0xaa) % 256).toString(16).padStart(2, '0').repeat(16));
-  const deck = shuffleFromSeed(computeDeckSeed(serverSeed, entropy));
-  const dealt = dealFromDeck(deck, MOCK_AGENTS.length);
-  return {
-    handId: 'demo',
-    gameId: 'demo',
-    seedHash: sha256Hex(serverSeed),
-    serverSeed,
-    entropy,
-    seats: MOCK_AGENTS.map((a, i) => ({
-      seat: i,
-      playerId: a.walletAddress,
-      nickname: a.nickname,
-      holeCards: dealt.hole[i]!,
-    })),
-    community: dealt.community,
-    txs: {},
-    cardIds: 'engine',
-  };
-}
-
-function sameCards(expected: number[], actual: number[]) {
-  return (
-    expected.length === actual.length &&
-    expected.every((c, i) => c === actual[i])
-  );
-}
-
-function isUiSpace(record: HandRecord) {
-  return (record.cardIds ?? record.cardIdSpace) === 'ui';
-}
-
-function verify(record: HandRecord) {
-  const checks: Check[] = [];
-  const selfOk = selfTest();
-  checks.push({
-    label: 'Verifier self-check',
-    status: selfOk ? 'pass' : 'fail',
-    detail: selfOk
-      ? 'This browser reproduces the published test vector (seed hash, deck seed, deck order)'
-      : 'This browser’s implementation does not reproduce the spec vector',
-  });
-  const toEngine = (ids: number[]) =>
-    isUiSpace(record) ? ids.map(uiIdToEngineId) : ids;
-  const seats = [...record.seats].sort((a, b) => a.seat - b.seat);
-
-  if (!record.serverSeed || !record.entropy) {
-    checks.push({
-      label: 'Shuffle secret revealed',
-      status: 'pending',
-      detail: 'The server reveals its secret seed after the hand ends. Check back in a moment.',
-    });
-    return {
-      checks,
-      deckSeedHex: null as string | null,
-      deck: null as number[] | null,
-    };
-  }
-
-  let seedHashOk = false;
-  try {
-    const recomputed = sha256Hex(record.serverSeed);
-    seedHashOk = recomputed === record.seedHash.toLowerCase();
-    checks.push({
-      label: 'Shuffle matches what was locked before the deal',
-      status: seedHashOk ? 'pass' : 'fail',
-      detail: seedHashOk ? 'sha256(serverSeed) equals the committed seedHash' : `recomputed ${recomputed}`,
-    });
-  } catch (error) {
-    checks.push({
-      label: 'serverSeed is valid hex',
-      status: 'fail',
-      detail: errorHandler(error),
-    });
-    return { checks, deckSeedHex: null, deck: null };
-  }
-
-  const entropyOk = record.entropy.length === seats.length;
-  checks.push({
-    label: 'Every agent added randomness',
-    status: entropyOk ? 'pass' : 'fail',
-    detail: `${record.entropy.length} entropy contributions · ${seats.length} seats`,
-  });
-
-  let deckSeed: Uint8Array;
-  try {
-    deckSeed = computeDeckSeed(record.serverSeed, record.entropy);
-  } catch (error) {
-    checks.push({
-      label: 'Entropy is valid hex',
-      status: 'fail',
-      detail: errorHandler(error),
-    });
-    return { checks, deckSeedHex: null, deck: null };
-  }
-  const deckSeedHex = bytesToHex(deckSeed);
-  if (record.deckSeed) {
-    const ok = record.deckSeed.toLowerCase() === deckSeedHex;
-    checks.push({
-      label: 'Deck seed matches the record (sha256 of seed + entropies)',
-      status: ok ? 'pass' : 'fail',
-    });
-  }
-
-  const deck = shuffleFromSeed(deckSeed);
-  const dealt = dealFromDeck(deck, seats.length);
-
-  seats.forEach((s, i) => {
-    const actual = toEngine(s.holeCards ?? []);
-    const expected = dealt.hole[i] ?? [];
-    if (actual.length === 0 || actual.some((c) => c < 0)) {
-      checks.push({
-        label: `${s.nickname}’s cards (seat ${s.seat})`,
-        status: 'pending',
-        detail: `Mucked / hidden · deck says ${expected.map(engineCardLabel).join(' ')}`,
-      });
-      return;
-    }
-    const ok = sameCards(expected, actual);
-    checks.push({
-      label: `${s.nickname}’s cards (seat ${s.seat})`,
-      status: ok ? 'pass' : 'fail',
-      detail: ok
-        ? actual.map(engineCardLabel).join(' ')
-        : `dealt ${actual.map(engineCardLabel).join(' ')} · deck says ${expected
-            .map(engineCardLabel)
-            .join(' ')}`,
-    });
-  });
-
-  const community = toEngine(record.community ?? []);
-  const expectedBoard = dealt.community.slice(0, community.length);
-  const boardOk = sameCards(expectedBoard, community);
-  checks.push({
-    label: `Community cards (${community.length}/5 dealt)`,
-    status: community.length === 0 ? 'pending' : boardOk ? 'pass' : 'fail',
-    detail:
-      community.length === 0
-        ? 'No board dealt (hand ended preflop)'
-        : boardOk
-          ? community.map(engineCardLabel).join(' ')
-          : `dealt ${community.map(engineCardLabel).join(' ')} · deck says ${expectedBoard
-              .map(engineCardLabel)
-              .join(' ')}`,
-  });
-
-  if (record.errors && record.errors.length > 0) {
-    checks.push({
-      label: 'Server’s own check reported a problem',
-      status: 'fail',
-      detail: record.errors.join(' · '),
-    });
-  }
-
-  return { checks, deckSeedHex, deck };
-}
-
-function txList(
-  txs: HandRecord['txs']
-): Array<{ label: string; hash: string }> {
-  if (!txs) return [];
-  if (Array.isArray(txs)) {
-    return txs
-      .filter(Boolean)
-      .map((hash, i) => ({ label: `tx ${i + 1}`, hash }));
-  }
-  return Object.entries(txs)
-    .filter(
-      (e): e is [string, string] => typeof e[1] === 'string' && e[1].length > 0
-    )
-    .map(([label, hash]) => ({ label, hash }));
-}
+import { ArrowUpRight, Link2, RefreshCw, SearchX } from 'lucide-react';
 
 const TX_LABEL: Record<string, { label: string; hint: string }> = {
   commit: { label: 'Deck commitment', hint: 'The shuffle fingerprint, written on NEAR before the deal' },
   reveal: { label: 'Seed reveal', hint: 'The secret seed, published after the hand' },
   settle: { label: 'Settlement', hint: 'Chip results written to the table vault' },
 };
-
-function StatusIcon({ status }: { status: CheckStatus }) {
-  if (status === 'pass') return <CheckCircle2 className='size-5 shrink-0 text-accent' aria-label='Passed' />;
-  if (status === 'fail') return <XCircle className='size-5 shrink-0 text-negative' aria-label='Failed' />;
-  return <Clock className='size-5 shrink-0 text-warning' aria-label='Pending' />;
-}
 
 function CardImg({ id }: { id: number }) {
   return (
@@ -280,6 +84,16 @@ export default function VerifyHandPage({
   });
 
   const result = useMemo(() => (data ? verify(data) : null), [data]);
+  const movesQ = useQuery({
+    queryKey: ['arena-moves', handId, mockMoves],
+    queryFn: () => (mockMoves ? Promise.resolve(mockArenaMoves()) : api.arenaMoves(handId)),
+    retry: false,
+  });
+  const summary = useMemo(() => {
+    if (!data) return null;
+    if (isDemo) return demoHand();
+    return summarizeHand(data, movesQ.data ?? [], { source: 'live', tableName: 'NEAR testnet table' });
+  }, [data, isDemo, movesQ.data]);
   const failed = result?.checks.some((c) => c.status === 'fail');
   const allPass = result && !failed && result.checks.every((c) => c.status === 'pass');
   const seats = data ? [...data.seats].sort((a, b) => a.seat - b.seat) : [];
@@ -291,16 +105,15 @@ export default function VerifyHandPage({
   const shortId = handId.length > 12 ? `${handId.slice(0, 8)}…` : handId;
 
   return (
-    <Page narrow className='[&>div]:max-w-[832px]'>
+    <Page narrow className='[&>div]:max-w-[1040px]'>
       <PageHeader
-        eyebrow={isDemo ? 'Provably fair · demo hand' : 'Provably fair'}
-        title='Verify hand'
+        eyebrow={isDemo ? 'Demo hand · no server needed' : 'Hand check'}
+        title='Read the slip'
         lead={
           <>
-            Your browser re-deals this hand from the revealed seed and each agent’s{' '}
-            <Term t='entropy'>randomness</Term>, then checks it against the cards that were dealt and the fingerprint{' '}
-            <Term t='commit'>locked before the deal</Term>. The server only supplies the revealed data; the math runs
-            here.
+            Your browser takes the secret the house revealed after the hand, mixes in each agent’s{' '}
+            <Term t='entropy'>randomness</Term>, re-shuffles the deck and checks it against the fingerprint{' '}
+            <Term t='commit'>sealed before the deal</Term>. The server hands over the data. The maths happens here.
           </>
         }
       />
@@ -332,66 +145,43 @@ export default function VerifyHandPage({
         <ErrorState onRetry={() => void refetch()} retrying={isFetching} />
       ) : data && result ? (
         <div className='flex flex-col gap-12'>
-          <section
-            aria-live='polite'
-            className={cn(
-              'flex items-start gap-3 rounded-md border p-4 sm:p-6',
-              failed ? 'border-negative/50 bg-negative/10' : allPass ? 'border-accent/40 bg-accent-soft' : 'border-warning/40 bg-warning/10'
-            )}
-          >
-            {failed ? (
-              <XCircle className='size-6 shrink-0 text-negative' aria-hidden />
-            ) : allPass ? (
-              <ShieldCheck className='size-6 shrink-0 text-accent' aria-hidden />
-            ) : (
-              <Clock className='size-6 shrink-0 text-warning' aria-hidden />
-            )}
-            <div>
-              <p className='text-h3 font-semibold'>
+          <section aria-labelledby='verdict-h' className='grid grid-cols-1 items-start gap-10 md:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] md:gap-12'>
+            {summary ? (
+              <HandReceipt hand={summary} checks={result.checks} tilt={-1} showMoveLinks className='w-full md:mt-2' />
+            ) : null}
+            <div aria-live='polite' className='md:pt-6'>
+              <h2
+                id='verdict-h'
+                className={cn(
+                  'font-display text-[44px] font-black uppercase leading-[0.9] sm:text-[56px]',
+                  failed ? 'text-card-red' : 'text-fg'
+                )}
+              >
                 {failed
                   ? 'This hand does not match its commitment'
                   : allPass
                     ? 'Every check passed'
                     : 'Partly verified'}
-              </p>
-              <p className='mt-1 text-body text-fg-muted'>
-                {failed
-                  ? 'At least one check below failed. The deal shown is not the one that was locked in.'
-                  : allPass
-                    ? 'This deal was fixed before anyone acted, and nobody could change it afterwards.'
-                    : 'Some data isn’t revealed yet. Hands can be fully checked once they finish.'}
-              </p>
-              {commitTx ? (
-                <div className='mt-3'>
-                  <TxLink hash={commitTx.hash} label='View the commitment on NEAR' />
-                </div>
-              ) : null}
-            </div>
-          </section>
-
-          <section aria-labelledby='checks-h'>
-            <div className='flex items-center justify-between gap-3'>
-              <h2 id='checks-h' className='text-h3 font-semibold'>
-                Checks
               </h2>
-              <Button variant='ghost' size='sm' disabled={isFetching} onClick={() => void refetch()}>
-                <RefreshCw className={cn(isFetching && 'animate-spin')} aria-hidden />
-                Re-run
-              </Button>
-            </div>
-            <Card as='div' className='mt-4 p-0 sm:p-0'>
-              <ul className='divide-y divide-border'>
-                {result.checks.map((c, i) => (
-                  <li key={i} className='flex items-start gap-3 px-4 py-3 sm:px-6'>
-                    <StatusIcon status={c.status} />
-                    <div className='min-w-0'>
-                      <p className='font-medium'>{c.label}</p>
-                      {c.detail ? <p className='mt-0.5 break-words text-caption text-fg-subtle'>{c.detail}</p> : null}
-                    </div>
-                  </li>
-                ))}
+              <p className='mt-4 text-body text-fg-muted'>
+                {failed
+                  ? 'At least one line on the slip failed. The cards shown are not the ones that were sealed before the deal.'
+                  : allPass
+                    ? 'The deal was fixed before anyone acted, and nobody could change it afterwards. Your browser just re-shuffled the deck and got the same cards.'
+                    : 'Some of it isn’t revealed yet. A hand can be fully checked once it’s over.'}
+              </p>
+              <ul className='mt-6 flex flex-col gap-2 text-caption text-fg-subtle'>
+                <li>✓ on the slip = this browser re-did that step and it matched.</li>
+                <li>“TEE ✓” = the move came signed from a NEAR AI confidential model. Tap one to re-check it at NEAR AI.</li>
               </ul>
-            </Card>
+              <div className='mt-6 flex flex-wrap items-center gap-3'>
+                <Button variant='secondary' size='md' disabled={isFetching} onClick={() => void refetch()}>
+                  <RefreshCw className={cn(isFetching && 'animate-spin')} aria-hidden />
+                  Run it again
+                </Button>
+                {commitTx ? <TxLink hash={commitTx.hash} label='The seal on NEAR' /> : null}
+              </div>
+            </div>
           </section>
 
           <HandMoveLog handId={handId} mock={mockMoves} />

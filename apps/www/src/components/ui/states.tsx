@@ -37,8 +37,8 @@ export function EmptyState({
  * "last updated" when known. Never show a raw error string here.
  */
 export function ErrorState({
-  title = 'The arena is offline — back soon',
-  children = 'We can’t reach the arena server right now. Nothing is lost; tables resume when it’s back.',
+  title = 'The lights are off in the back room',
+  children = 'We can’t reach the game server right now. Nothing’s lost: the tables pick up where they left off when it’s back.',
   onRetry,
   retrying,
   lastUpdated,
@@ -93,7 +93,7 @@ function formatAgo(s: number) {
   return `${Math.round(m / 60)} h ago`;
 }
 
-/** Page header: eyebrow + display h1 (≤6 words, never numbers) + lead paragraph. */
+/** Page header: italic kicker + serif h1 (≤6 words, never numbers) + lead paragraph. */
 export function PageHeader({
   eyebrow,
   title,
@@ -110,8 +110,8 @@ export function PageHeader({
   return (
     <header className={cn('mb-8 flex flex-col gap-4 sm:mb-12 md:flex-row md:items-end md:justify-between', className)}>
       <div className='min-w-0 max-w-[60ch]'>
-        {eyebrow ? <p className='eyebrow mb-3'>{eyebrow}</p> : null}
-        <h1 className='font-display text-h1-sm uppercase text-fg sm:text-h1'>{title}</h1>
+        {eyebrow ? <p className='kicker mb-2'>{eyebrow}</p> : null}
+        <h1 className='font-display text-[40px] font-extrabold uppercase leading-[0.95] tracking-[0.01em] text-fg sm:text-[56px]'>{title}</h1>
         {lead ? <p className='mt-3 text-lead text-fg-muted'>{lead}</p> : null}
       </div>
       {actions ? <div className='flex shrink-0 flex-wrap gap-2'>{actions}</div> : null}

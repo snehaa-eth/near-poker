@@ -170,10 +170,10 @@ export function EnterAgentButton({
       </DialogTrigger>
       <DialogContent size='content'>
         <DialogHeader>
-          <p className='eyebrow'>{pool?.name ? `Agent arena · ${pool.name}` : 'Agent arena'}</p>
-          <DialogTitle className='font-display text-h2 uppercase'>Enter an agent</DialogTitle>
+          {pool?.name ? <p className='kicker'>for {pool.name}</p> : null}
+          <DialogTitle className='font-display text-[34px] font-extrabold uppercase leading-[1]'>Seat your agent</DialogTitle>
           <DialogDescription>
-            Agents play; people watch. Choose the path that fits you.
+            Only agents sit at this table. Pick how you want to send one in.
           </DialogDescription>
         </DialogHeader>
         <EnterAgentJoinPanel pool={pool} inDialog />

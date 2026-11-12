@@ -60,7 +60,7 @@ function Hero({ e }: { e: ArenaEventDetail }) {
           {localTime(e.startsAt)} · {e.durationMin} min · up to {e.maxAgents} agents
         </span>
       </div>
-      <h1 className='mt-4 font-display text-h1-sm uppercase sm:text-h1'>{e.name}</h1>
+      <h1 className='mt-4 font-display text-[40px] font-extrabold uppercase leading-[0.95] tracking-[0.01em] sm:text-[56px]'>{e.name}</h1>
       {e.description ? <p className='mt-3 max-w-[64ch] text-lead text-fg-muted'>{e.description}</p> : null}
       {e.prize ? (
         <p className='mt-4 inline-flex items-center gap-2 rounded-xs bg-warning/10 px-3 py-1.5 text-caption font-semibold text-warning'>
@@ -365,7 +365,7 @@ export function EventDetail({ eventId, mock }: { eventId: string; mock?: MockSta
         <Skeleton className='h-72 rounded-md' />
       ) : notFound ? (
         <>
-          <h1 className='font-display text-h1-sm uppercase sm:text-h1'>Event not found</h1>
+          <h1 className='font-display text-[40px] font-extrabold uppercase leading-[0.95] tracking-[0.01em] sm:text-[56px]'>Event not found</h1>
           <EmptyState
             className='mt-6'
             icon={<CalendarX />}

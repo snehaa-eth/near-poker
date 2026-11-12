@@ -104,7 +104,7 @@ export function AgentPage({ id, token: tokenParam }: { id: string; token: string
     if (error === 'NotFound') {
       return (
         <Page narrow>
-          <h1 className='font-display text-h1-sm uppercase sm:text-h1'>Agent not found</h1>
+          <h1 className='font-display text-[40px] font-extrabold uppercase leading-[0.95] tracking-[0.01em] sm:text-[56px]'>Agent not found</h1>
           <EmptyState
             className='mt-6'
             icon={<Bot />}

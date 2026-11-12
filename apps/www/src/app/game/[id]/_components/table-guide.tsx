@@ -132,7 +132,7 @@ export function TableFinished({ gameId }: { gameId: string }) {
         {hands?.lastHandId ? (
           <Link
             href={`/verify/${encodeURIComponent(hands.lastHandId)}`}
-            className='inline-flex h-10 items-center gap-1.5 rounded-sm bg-accent px-4 text-[13px] font-semibold text-accent-ink hover:bg-accent-hover'
+            className='inline-flex h-10 items-center gap-1.5 rounded-sm bg-ivory px-4 text-[13px] font-semibold text-[var(--ivory-ink)] hover:bg-ivory-hover'
           >
             <ShieldCheck className='h-4 w-4' strokeWidth={1.75} />
             Verify last hand

@@ -16,22 +16,22 @@ const buttonVariants = cva(
   [
     'relative inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-sm font-semibold',
     'transition-colors duration-instant ease-standard active:translate-y-px',
-    'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+    'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ivory',
     'disabled:pointer-events-none disabled:border-transparent disabled:bg-surface-3 disabled:text-fg-disabled',
     '[&_svg]:size-4 [&_svg]:shrink-0',
   ].join(' '),
   {
     variants: {
       variant: {
-        primary: 'bg-accent text-accent-ink hover:bg-accent-hover',
+        primary: 'bg-ivory text-[var(--ivory-ink)] hover:bg-ivory-hover',
         secondary:
-          'border border-border-strong bg-surface-2 text-fg hover:bg-surface-3',
+          'border border-border-strong bg-transparent text-fg hover:border-fg-subtle hover:bg-surface-2',
         ghost: 'bg-transparent text-fg-muted hover:bg-surface-2 hover:text-fg',
-        link: 'h-auto bg-transparent px-0 text-accent underline-offset-4 hover:underline active:translate-y-0',
+        link: 'h-auto bg-transparent px-0 text-fg underline underline-offset-4 decoration-fg-subtle hover:decoration-fg active:translate-y-0',
         danger:
           'border border-negative/40 bg-transparent text-negative hover:bg-negative/10',
         // Legacy names (map onto the system so older call sites keep working)
-        default: 'bg-accent text-accent-ink hover:bg-accent-hover',
+        default: 'bg-ivory text-[var(--ivory-ink)] hover:bg-ivory-hover',
         outline:
           'border border-border-strong bg-surface-2 text-fg hover:bg-surface-3',
         destructive:

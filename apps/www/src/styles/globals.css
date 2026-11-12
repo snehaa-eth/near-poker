@@ -4,23 +4,41 @@
 
 /*
  * Dark Table design tokens (ui-audit/DESIGN-SYSTEM.md).
- * Dark-only. One accent: mint #00EC97. No light theme, no lime, no link blue.
+ * Dark-only. One accent: mint #00EC97 (= verified / live / your action).
+ * "Backroom noir": warm near-black, film grain, a lamp pool, paper receipts.
+ * Lamp amber and paper are atmosphere, never UI colour.
  */
 @layer base {
   :root {
     color-scheme: dark;
 
-    /* Neutrals (green-tinted blacks) */
-    --bg: #0b0f0d;
-    --surface: #121815;
-    --surface-2: #1a2420;
-    --surface-3: #22302a;
-    --border: #26332d;
-    --border-strong: #33443c;
-    --text: #f2f5f3;
-    --text-muted: #a3ada8;
-    --text-subtle: #8a9590;
-    --text-disabled: #5c6661;
+    /* Neutrals: warm near-blacks (a back room, not a server room) */
+    --bg: #0c0b09;
+    --surface: #15130f;
+    --surface-2: #1d1a15;
+    --surface-3: #27231c;
+    --border: #2c2720;
+    --border-strong: #3e372c;
+    --text: #f3eee4;
+    --text-muted: #b5ac9c;
+    --text-subtle: #978e7f;
+    --text-disabled: #645d52;
+
+    /* Atmosphere (never UI colour): lamp light, paper, ink */
+    --lamp: #f4d9a0;
+    --lamp-rgb: 244, 217, 160;
+    --paper: #ede8dc;
+    --paper-shade: #ddd5c3;
+    --ink: #1f1b16;
+    --ink-muted: #5b5347;
+    --stamp: #0a6b42;
+    --stamp-red: #c62f3a;
+    --brass: #c9a35b;
+    --card-red: #c62f3a;
+    /* Primary buttons: playing-card ivory. Mint is never a button fill. */
+    --ivory: #ede8dc;
+    --ivory-hover: #fbf7ee;
+    --ivory-ink: #0c0b09;
 
     /* Brand + semantic */
     --accent: #00ec97;
@@ -30,7 +48,7 @@
     --felt-1: #0e3b2a;
     --felt-2: #082419;
     --rail: #2a2018;
-    --positive: #00ec97;
+    --positive: #d9b871;
     --negative: #ff6b6b;
     --warning: #f5c542;
     --info: #9fb4ff;
@@ -49,7 +67,7 @@
     /* Elevation */
     --shadow-e2: 0 8px 24px rgba(0, 0, 0, 0.4);
     --shadow-e3: 0 24px 64px rgba(0, 0, 0, 0.6);
-    --scrim: rgba(5, 8, 7, 0.72);
+    --scrim: rgba(8, 6, 4, 0.74);
     --glow-accent: 0 0 0 2px var(--accent), 0 0 24px rgba(0, 236, 151, 0.35);
 
     /* Motion */
@@ -68,6 +86,9 @@
     --container-narrow: 720px;
     --nav-h: 56px;
 
+    /* 4.5% film grain (feTurbulence), tiled. */
+    --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 0.95  0 0 0 0 0.85  0 0 0 0.09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+
     /* Legacy shadcn aliases (kept so older components render dark, not light) */
     --background: var(--bg);
     --foreground: var(--text);
@@ -75,8 +96,8 @@
     --card-foreground: var(--text);
     --popover: var(--surface-2);
     --popover-foreground: var(--text);
-    --primary: var(--accent);
-    --primary-foreground: var(--accent-ink);
+    --primary: var(--ivory);
+    --primary-foreground: var(--ivory-ink);
     --secondary: var(--surface-2);
     --secondary-foreground: var(--text);
     --muted: var(--surface-2);
@@ -85,7 +106,7 @@
     --destructive: var(--negative);
     --destructive-foreground: var(--accent-ink);
     --input: var(--border-strong);
-    --ring: var(--accent);
+    --ring: var(--ivory);
     --radius: 10px;
     --felt: var(--felt-1);
     --page: var(--bg);
@@ -107,12 +128,25 @@
     @apply min-h-[100dvh] bg-bg font-sans text-body text-fg;
     overflow-x: clip;
   }
+  /* Film grain + vignette over everything: static SVG noise, no images, no animation. */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    pointer-events: none;
+    background:
+      radial-gradient(120% 95% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.42) 100%),
+      var(--grain);
+    background-size: auto, 180px 180px;
+    opacity: 1;
+  }
   ::selection {
-    background: rgba(0, 236, 151, 0.3);
+    background: rgba(201, 163, 91, 0.35);
     color: var(--text);
   }
   :focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--ivory);
     outline-offset: 2px;
   }
   /* Tabular numerals wherever numbers line up. */
@@ -125,10 +159,15 @@
     text-underline-offset: 3px;
   }
   /* The display font only ships 400: never let the browser synthesize bold. */
+  /* Display face ships 700–900 only: default to 800, never synthesize. */
   .font-display,
   .font-poker {
-    font-weight: 400 !important;
+    font-weight: 800;
     font-synthesis: none;
+  }
+  /* Tabular figures everywhere numbers are set. */
+  body {
+    font-variant-numeric: tabular-nums;
   }
 }
 
@@ -158,12 +197,72 @@
     @apply text-label uppercase text-fg-muted;
   }
 
+  /* A kicker in the backroom voice: condensed marquee type, muted. */
+  .kicker {
+    font-family: var(--font-display), Impact, sans-serif;
+    font-weight: 700;
+    font-size: 20px;
+    line-height: 24px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  /* Pool of lamp light: atmosphere only. Put it behind content (absolute, inset-0). */
+  .lamp-pool {
+    pointer-events: none;
+    background:
+      radial-gradient(38% 46% at var(--lamp-x, 50%) var(--lamp-y, 45%), rgba(var(--lamp-rgb), 0.16), rgba(var(--lamp-rgb), 0.05) 55%, transparent 80%);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .lamp-flicker {
+      animation: dt-flicker 7s steps(1, end) infinite;
+    }
+  }
+
+  /* ---- Thermal receipt ---- */
+  .receipt-wrap {
+    filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.55)) drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4));
+  }
+  .receipt-paper {
+    --zz: 10px;
+    position: relative;
+    background:
+      linear-gradient(180deg, rgba(255, 252, 240, 0.55), transparent 30%, transparent 70%, rgba(120, 100, 60, 0.08)),
+      var(--paper);
+    color: var(--ink);
+    font-family: var(--font-mono), ui-monospace, monospace;
+    -webkit-mask:
+      conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / var(--zz) 51% repeat-x,
+      conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) top / var(--zz) 51% repeat-x;
+    mask:
+      conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / var(--zz) 51% repeat-x,
+      conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) top / var(--zz) 51% repeat-x;
+  }
+  .receipt-paper ::selection {
+    background: rgba(11, 122, 75, 0.25);
+    color: var(--ink);
+  }
+  .receipt-paper :focus-visible {
+    outline-color: var(--stamp);
+  }
+  .receipt-rule {
+    border: 0;
+    border-top: 1.5px dashed rgba(31, 27, 22, 0.45);
+  }
+  .ink-stamp {
+    -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='s'><feTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.4 2.15'/></filter><rect width='100%' height='100%' filter='url(%23s)'/></svg>");
+    mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='s'><feTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.4 2.15'/></filter><rect width='100%' height='100%' filter='url(%23s)'/></svg>");
+    background: rgba(237, 232, 220, 0.92);
+  }
+
   .link {
-    color: var(--accent);
-    text-decoration: none;
+    color: var(--text);
+    text-decoration: underline;
+    text-decoration-color: rgba(237, 232, 220, 0.4);
   }
   .link:hover {
-    text-decoration: underline;
+    text-decoration-color: var(--text);
   }
 
   .skeleton {
@@ -189,6 +288,13 @@
   to {
     background-position: -200% 0;
   }
+}
+@keyframes dt-flicker {
+  0%, 100% { opacity: 1; }
+  41% { opacity: 0.93; }
+  42% { opacity: 1; }
+  77% { opacity: 0.96; }
+  78% { opacity: 1; }
 }
 @keyframes dt-live {
   0%,

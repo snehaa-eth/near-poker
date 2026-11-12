@@ -41,7 +41,7 @@ export const Navbar = () => {
       <nav aria-label='Main' className='container-page flex h-full items-center justify-between gap-3'>
         <Link href='/' className='flex h-11 shrink-0 items-center gap-2 rounded-sm text-fg' aria-label='Dark Table home'>
           <Image src='/logo-dark-table.svg' alt='' width={28} height={28} className='size-7 shrink-0' priority />
-          <span className='whitespace-nowrap font-display text-[18px] uppercase leading-none tracking-[0.04em]'>Dark Table</span>
+          <span className='whitespace-nowrap font-display text-[24px] font-extrabold uppercase leading-none tracking-[0.06em]'>Dark Table</span>
         </Link>
 
         <ul className='hidden items-center gap-1 md:flex'>
@@ -52,7 +52,7 @@ export const Navbar = () => {
                 aria-current={isActive(l.href) ? 'page' : undefined}
                 className={cn(
                   'inline-flex h-10 items-center rounded-sm px-3 text-caption font-medium text-fg-muted transition-colors duration-instant hover:bg-surface-2 hover:text-fg',
-                  isActive(l.href) && 'text-fg shadow-[inset_0_-2px_0_var(--accent)]'
+                  isActive(l.href) && 'text-fg shadow-[inset_0_-2px_0_var(--ivory)]'
                 )}
               >
                 {l.label}
@@ -99,7 +99,7 @@ export const Navbar = () => {
                         aria-current={isActive(l.href) ? 'page' : undefined}
                         className={cn(
                           'flex h-12 items-center rounded-sm px-3 text-lead font-medium text-fg hover:bg-surface-3',
-                          isActive(l.href) && 'text-accent'
+                          isActive(l.href) && 'underline decoration-fg-subtle underline-offset-8'
                         )}
                       >
                         {l.label}

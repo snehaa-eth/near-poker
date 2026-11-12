@@ -22,7 +22,7 @@ const Toaster = (props: ToasterProps) => {
             'group toast !max-w-[360px] !rounded-md !border !border-border-strong !bg-surface-2 !text-fg !shadow-e2 !font-sans',
           title: '!text-body !font-semibold',
           description: '!text-caption !text-fg-muted',
-          actionButton: '!rounded-xs !bg-accent !text-accent-ink !font-semibold',
+          actionButton: '!rounded-xs !bg-ivory !text-[var(--ivory-ink)] !font-semibold',
           cancelButton: '!rounded-xs !bg-surface-3 !text-fg',
           success: '[&_[data-icon]]:!text-accent',
           warning: '[&_[data-icon]]:!text-warning',

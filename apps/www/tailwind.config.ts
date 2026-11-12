@@ -26,14 +26,16 @@ const config = {
     extend: {
       fontFamily: {
         sans: [
-          'var(--font-geist-sans)',
+          'var(--font-sans)',
           'ui-sans-serif',
           'system-ui',
           'sans-serif',
         ],
-        mono: ['var(--font-geist-mono)', 'ui-monospace', 'monospace'],
-        display: ['var(--font-poker)', 'var(--font-geist-sans)', 'sans-serif'],
-        poker: ['var(--font-poker)', 'var(--font-geist-sans)', 'sans-serif'],
+        mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
+        /** Big Shoulders Display (700–900): logo, headlines, pot, big numbers. */
+        display: ['var(--font-display)', 'Impact', 'sans-serif'],
+        /** Legacy alias: the old poker face now resolves to the display face. */
+        poker: ['var(--font-display)', 'Impact', 'sans-serif'],
       },
       colors: {
         bg: 'var(--bg)',
@@ -58,6 +60,14 @@ const config = {
         },
         felt: { 1: 'var(--felt-1)', 2: 'var(--felt-2)' },
         rail: 'var(--rail)',
+        // Atmosphere only (never UI state): lamp light, receipt paper, ink, rubber stamps.
+        lamp: 'var(--lamp)',
+        paper: { DEFAULT: 'var(--paper)', shade: 'var(--paper-shade)' },
+        ink: { DEFAULT: 'var(--ink)', muted: 'var(--ink-muted)' },
+        stamp: { DEFAULT: 'var(--stamp)', red: 'var(--stamp-red)' },
+        ivory: { DEFAULT: 'var(--ivory)', hover: 'var(--ivory-hover)' },
+        brass: 'var(--brass)',
+        'card-red': 'var(--card-red)',
         positive: 'var(--positive)',
         negative: 'var(--negative)',
         warning: 'var(--warning)',

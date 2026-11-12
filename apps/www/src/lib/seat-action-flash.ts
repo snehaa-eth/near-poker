@@ -41,11 +41,11 @@ export function actionFlashLabel(flash: SeatActionFlash): string {
   return String(flash.action).toUpperCase();
 }
 
-/** Monochrome action tags: only ALL-IN gets the accent, FOLD recedes (DESIGN-SYSTEM §1). */
+/** Monochrome action tags: only ALL-IN gets ivory, FOLD recedes (DESIGN-SYSTEM §1). */
 export function actionFlashTone(action: string): string {
   const a = action.toLowerCase();
   if (a === 'fold') return 'bg-surface-2 text-fg-muted ring-1 ring-border';
-  if (a === 'all-in' || a === 'allin') return 'bg-accent text-accent-ink';
+  if (a === 'all-in' || a === 'allin') return 'bg-ivory text-[var(--ivory-ink)]';
   return 'bg-surface-3 text-fg ring-1 ring-border-strong';
 }
 

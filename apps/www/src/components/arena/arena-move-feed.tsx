@@ -15,6 +15,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import type { ArenaMoveRecord, PublicGameView } from '~/lib/api';
 import { api } from '~/lib/api';
 import { receiptUrl, shortModel } from '~/lib/arena';
+import { modelTag } from '~/lib/last-hand';
 import { mockReceipts } from '~/lib/mock-hand';
 import { cardLabel, isRedCard } from '~/lib/poker-eval';
 import { chipText } from '~/lib/seat-action-flash';
@@ -22,6 +23,9 @@ import { actionPhrase } from '~/lib/table-director';
 import { cn } from '~/lib/utils';
 
 import { useQuery } from '@tanstack/react-query';
+
+import { shortHash } from '~/components/backroom/hand-receipt';
+import { Receipt, ReceiptRow, ReceiptRule } from '~/components/ui/receipt';
 
 import { ArrowUpRight, Check, ShieldCheck } from 'lucide-react';
 
@@ -254,58 +258,51 @@ export function ProofList({
     focusRef.current?.focus({ preventScroll: true });
   }, [focusIndex]);
 
+  const allSigned = agentRows.length > 0 && signed === agentRows.length;
   return (
-    <div className='flex flex-col gap-4'>
-      <section className='rounded-md border border-border bg-surface p-4'>
-        <h3 className='text-label uppercase text-fg-muted'>Deck</h3>
+    <div className='flex flex-col gap-5'>
+      <Receipt compact stamp={fairness && allSigned && ended ? 'verified' : null} stampClassName='right-3 top-3 rotate-[9deg]' label='Deck seal'>
+        <p className='text-[13px] font-bold uppercase tracking-[0.2em]'>Dark Table</p>
         {fairness ? (
           <>
-            <p className='mt-1 flex items-center gap-1.5 text-[15px] text-fg'>
-              <ShieldCheck className='h-4 w-4 text-accent' strokeWidth={1.75} />
-              {fairness.revealed ? 'Seed revealed' : 'Committed before the deal'}
-            </p>
-            <p className='mt-1 break-all font-mono text-[12px] leading-5 text-fg-muted' title={fairness.seedHash}>
+            <ReceiptRow left={<>Hand #{fairness.handId.slice(0, 8)}</>} muted />
+            <ReceiptRule className='my-2' />
+            <ReceiptRow left={fairness.revealed ? 'Seed revealed' : 'Deck sealed'} right={<>{shortHash(fairness.seedHash)} ✓</>} />
+            <p className='mt-1 break-all text-[11px] leading-4 text-ink-muted' title={fairness.seedHash}>
               {fairness.seedHash}
             </p>
-            <p className='mt-1 text-[13px] text-fg-subtle'>
-              Hand <span className='font-mono'>#{fairness.handId}</span>
-            </p>
+            <ReceiptRule className='my-2' />
+            <ReceiptRow left='Moves signed in a TEE' right={`${signed}/${agentRows.length}`} strong />
             {ended ? (
               <Link
                 href={verifyHref ?? `/verify/${encodeURIComponent(fairness.handId)}`}
-                className='mt-3 inline-flex h-10 items-center gap-1.5 rounded-sm bg-accent px-3 text-[13px] font-semibold text-accent-ink hover:bg-accent-hover'
+                className='mt-3 inline-flex h-10 items-center gap-1.5 rounded-sm bg-ink px-3 font-sans text-[13px] font-semibold text-paper hover:bg-[#3a332a]'
               >
                 Verify hand
                 <ArrowUpRight className='h-4 w-4' />
               </Link>
             ) : (
-              <p className='mt-2 text-[13px] text-fg-subtle'>
-                The seed is revealed when the hand ends; then anyone can re-shuffle and check every card.
+              <p className='mt-2 font-sans text-[12px] leading-[17px] text-ink-muted'>
+                The secret is revealed when the hand ends. Then anyone can re-shuffle and check every card.
               </p>
             )}
           </>
         ) : (
-          <p className='mt-1 text-[13px] text-fg-subtle'>No deck committed yet — the next hand commits one before the deal.</p>
+          <p className='mt-1 font-sans text-[13px] text-ink-muted'>No deck sealed yet. The next hand seals one before the deal.</p>
         )}
-      </section>
+      </Receipt>
 
-      <section>
-        <h3 className='flex items-baseline justify-between text-label uppercase text-fg-muted'>
-          Agent moves
-          <span className='normal-case tracking-normal text-[13px] font-medium'>
-            <span className='tabular-nums text-fg'>
-              {signed}/{agentRows.length}
-            </span>{' '}
-            signed in a TEE
-          </span>
+      <section aria-labelledby='proof-moves-h'>
+        <h3 id='proof-moves-h' className='text-label uppercase text-fg-muted'>
+          One slip per move
         </h3>
         <p className='mt-1 text-[13px] text-fg-subtle'>
-          Only replies from a NEAR AI Cloud confidential (TEE) model are accepted.
+          A move only counts if a NEAR AI Cloud confidential (TEE) model signed it.
         </p>
         {agentRows.length === 0 ? (
           <p className='mt-3 text-[13px] text-fg-subtle'>No agent moves yet this hand.</p>
         ) : (
-          <ol className='mt-2 divide-y divide-border'>
+          <ol className='mt-3 flex flex-col gap-2.5'>
             {agentRows.map((r) => {
               const focused = focusIndex === r.index;
               return (
@@ -313,40 +310,35 @@ export function ProofList({
                   key={r.index}
                   ref={focused ? focusRef : undefined}
                   tabIndex={focused ? -1 : undefined}
-                  className={cn(
-                    'flex items-center gap-2 py-2 outline-none',
-                    focused && '-mx-2 rounded-sm bg-accent-soft px-2 shadow-[inset_2px_0_0_var(--accent)]'
-                  )}
+                  className={cn('outline-none', focused && 'rounded-sm ring-2 ring-accent ring-offset-2 ring-offset-[var(--surface-2)]')}
                 >
-                  <span className='w-6 shrink-0 text-right text-[13px] tabular-nums text-fg-subtle'>
-                    {r.index + 1}
-                  </span>
-                  <div className='min-w-0 flex-1'>
-                    <p className='truncate text-[15px]'>
-                      <span className='font-semibold text-fg'>{r.nickname}</span>{' '}
-                      <span className='text-fg-muted'>{r.phrase}</span>
-                    </p>
-                    <p className='flex items-center gap-1 truncate text-[13px] text-fg-subtle'>
+                  <Receipt compact paperClassName='py-3' tilt={r.index % 2 ? 0.4 : -0.4}>
+                    <ReceiptRow
+                      left={
+                        <>
+                          <span className='text-ink-muted'>{String(r.index + 1).padStart(2, '0')}</span>{' '}
+                          <span className='font-bold'>{r.nickname}</span> {r.phrase}
+                        </>
+                      }
+                    />
+                    <div className='mt-0.5 flex items-baseline justify-between gap-2 text-[11px]'>
+                      <span className='truncate text-ink-muted'>{modelTag(r.model ?? '')} TEE {r.receipt ? '✓' : ''}</span>
                       {r.receipt ? (
-                        <Check className='h-3.5 w-3.5 shrink-0 text-accent' strokeWidth={2.5} aria-label='TEE attested' />
-                      ) : null}
-                      <span className='truncate font-mono text-[12px]'>{shortModel(r.model ?? '', 30)}</span>
-                    </p>
-                  </div>
-                  {r.receipt ? (
-                    <a
-                      href={receiptUrl(r.receipt)}
-                      target='_blank'
-                      rel='noopener noreferrer'
-                      className='inline-flex h-9 shrink-0 items-center gap-1 rounded-xs px-2 text-[13px] font-semibold text-accent hover:bg-surface-3'
-                      aria-label={`Receipt for move ${r.index + 1} (opens NEAR AI verification)`}
-                    >
-                      Receipt
-                      <ArrowUpRight className='h-3.5 w-3.5' />
-                    </a>
-                  ) : (
-                    <span className='shrink-0 text-[13px] text-fg-subtle'>syncing…</span>
-                  )}
+                        <a
+                          href={receiptUrl(r.receipt)}
+                          target='_blank'
+                          rel='noopener noreferrer'
+                          className='inline-flex h-7 shrink-0 items-center gap-0.5 font-semibold text-stamp underline decoration-dotted underline-offset-2'
+                          aria-label={`Receipt for move ${r.index + 1} (opens NEAR AI verification)`}
+                        >
+                          Signed receipt
+                          <ArrowUpRight className='h-3.5 w-3.5' />
+                        </a>
+                      ) : (
+                        <span className='shrink-0 text-ink-muted'>printing…</span>
+                      )}
+                    </div>
+                  </Receipt>
                 </li>
               );
             })}

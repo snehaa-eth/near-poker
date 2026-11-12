@@ -164,6 +164,8 @@ export type ArenaMoveRecord = {
   signedText: string;
   signature: string;
   verifiedAt: string | number;
+  /** Raw NEAR AI completion (JSON) — carries the agent's table-talk `line`. */
+  responseBody?: string;
 };
 
 /** GET /hands/:handId (INTERFACES §4). */

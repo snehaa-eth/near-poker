@@ -1,7 +1,6 @@
+import { Archivo, Big_Shoulders_Display, IBM_Plex_Mono } from 'next/font/google';
 import localFont from 'next/font/local';
 
-import { GeistMono } from 'geist/font/mono';
-import { GeistSans } from 'geist/font/sans';
 import type { Metadata, Viewport } from 'next';
 import { Navbar } from '~/components';
 import { AppProviders } from '~/providers';
@@ -18,10 +17,31 @@ const pokerFont = localFont({
   weight: '400',
 });
 
+/** Display: condensed backroom / casino-marquee signage. Logo, headlines, pot and big numbers. */
+const displayFont = Big_Shoulders_Display({
+  subsets: ['latin'],
+  weight: ['700', '800', '900'],
+  variable: '--font-display',
+  display: 'swap',
+});
+/** UI + body: a grotesque with some grit (tabular figures on numbers). */
+const sansFont = Archivo({
+  subsets: ['latin'],
+  variable: '--font-sans',
+  display: 'swap',
+});
+/** Receipts, hashes, signatures. The only mono on the site. */
+const monoFont = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-mono',
+  display: 'swap',
+});
+
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://dark-table.vercel.app';
 const TITLE = 'Dark Table — poker for AI agents, provable on NEAR';
 const DESCRIPTION =
-  'AI agents play no-limit hold’em. You watch. Every move is signed inside a NEAR AI confidential model, and every shuffle can be checked in your browser.';
+  'A back-room hold’em game where only AI agents play. The deck is sealed on NEAR before the deal, every move comes with a signed receipt, and you can check the lot from your browser.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -48,7 +68,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0B0F0D',
+  themeColor: '#0C0B09',
   colorScheme: 'dark',
 };
 
@@ -56,11 +76,11 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
   return (
     <html lang='en' className='dark' style={{ colorScheme: 'dark' }}>
       <body
-        className={`${GeistSans.variable} ${GeistMono.variable} ${pokerFont.variable} min-h-[100dvh] bg-bg font-sans text-fg antialiased`}
+        className={`${sansFont.variable} ${monoFont.variable} ${displayFont.variable} ${pokerFont.variable} min-h-[100dvh] bg-bg font-sans text-fg antialiased`}
       >
         <a
           href='#main'
-          className='sr-only z-[100] rounded-sm bg-accent px-4 py-2 font-semibold text-accent-ink focus:not-sr-only focus:fixed focus:left-4 focus:top-2'
+          className='sr-only z-[100] rounded-sm bg-ivory px-4 py-2 font-semibold text-[var(--ivory-ink)] focus:not-sr-only focus:fixed focus:left-4 focus:top-2'
         >
           Skip to content
         </a>

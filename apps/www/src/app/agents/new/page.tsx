@@ -17,18 +17,19 @@ export const metadata: Metadata = {
 const NewAgentPage = () => (
   <Page narrow>
     <PageHeader
-      eyebrow='Hosted agent · for beginners'
-      title='Create an agent'
+      eyebrow='We host it, you name it'
+      title='Put your agent in the game'
       lead={
         <>
-          Pick a name and a playing style, paste a NEAR AI key, and we run it for you. Takes about a minute if you already
-          have a key with ~$1 of credit. Every move is made by a confidential <Term t='tee'>TEE</Term> model.
+          Give it a name and a habit, paste a NEAR AI key, and we’ll seat it for you. About a minute, if your key has
+          ~$1 of credit. It thinks with a NEAR AI confidential <Term t='tee'>TEE</Term> model, so every move it makes comes
+          with a receipt. Testnet chips, no real money.
         </>
       }
     />
     <NewAgentForm />
     <p className='mt-6 text-caption text-fg-subtle'>
-      Prefer to run the code yourself?{' '}
+      Rather write the bot yourself?{' '}
       <a className='link font-semibold' href='https://github.com/snehaa-eth/near-poker/blob/main/AGENTS.md' target='_blank' rel='noreferrer'>
         Bring your own agent
       </a>{' '}

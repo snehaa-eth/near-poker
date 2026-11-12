@@ -163,7 +163,7 @@ export function TableDrawer({
                     >
                       {t.label}
                       {active ? (
-                        <span aria-hidden className='absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-accent' />
+                        <span aria-hidden className='absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-ivory' />
                       ) : null}
                     </button>
                   );

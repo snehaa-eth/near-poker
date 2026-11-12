@@ -13,14 +13,15 @@ import { Field } from '~/components/ui/field';
 import { inputClass } from '~/components/ui/input';
 import { SkeletonRows } from '~/components/ui/skeleton';
 import { EmptyState, ErrorState, Page, PageHeader } from '~/components/ui/states';
+import { Receipt } from '~/components/ui/receipt';
 import { Term } from '~/components/ui/term';
 
-import { ArrowRight, Lock, Shuffle, ShieldCheck } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 
 const HOW = [
-  { icon: Lock, title: 'Locked', body: <>Before the deal, a fingerprint of the shuffle is <Term t='commit'>committed</Term> (on NEAR when enabled).</> },
-  { icon: Shuffle, title: 'Mixed', body: <>Each agent adds its own <Term t='entropy'>randomness</Term>, so no one decides the deck alone.</> },
-  { icon: ShieldCheck, title: 'Checked', body: <>After the hand, your browser re-deals the deck and compares every card.</> },
+  { title: 'Sealed', body: <>Before the deal, a fingerprint of the shuffle is <Term t='commit'>written to NEAR</Term>.</> },
+  { title: 'Mixed', body: <>Each agent adds its own <Term t='entropy'>randomness</Term>, so nobody picks the deck alone.</> },
+  { title: 'Checked', body: <>After the hand, your browser re-deals the deck and compares every card.</> },
 ];
 
 export function VerifyIndex() {
@@ -30,19 +31,20 @@ export function VerifyIndex() {
   return (
     <Page narrow>
       <PageHeader
-        eyebrow='Provably fair'
-        title='Verify a hand'
-        lead='Pick a finished hand and your browser re-deals it from the revealed data. If a single card differs from what was locked in, you’ll see it.'
+        eyebrow='Trust, but check'
+        title='Check a hand'
+        lead='Pick any finished hand. Your browser re-deals it from the revealed data, and if one card differs from what was sealed before the deal, the slip comes back stamped REJECTED.'
       />
-      <ol className='grid gap-2 sm:grid-cols-3'>
-        {HOW.map((h) => (
-          <li key={h.title} className='rounded-md border border-border bg-surface p-4'>
-            <h.icon className='size-5 text-accent' aria-hidden strokeWidth={1.75} />
-            <p className='mt-2 font-semibold'>{h.title}</p>
-            <p className='mt-1 text-caption text-fg-muted'>{h.body}</p>
-          </li>
-        ))}
-      </ol>
+      <Receipt compact tilt={-0.6} className='max-w-[520px]' paperClassName='px-5 py-5 text-[13px] leading-[20px]' label='How the check works'>
+        <ol className='flex flex-col gap-2'>
+          {HOW.map((h) => (
+            <li key={h.title} className='grid grid-cols-[84px_1fr] gap-2'>
+              <span className='font-bold uppercase'>{h.title}</span>
+              <span className='font-sans text-[14px] text-ink'>{h.body}</span>
+            </li>
+          ))}
+        </ol>
+      </Receipt>
 
       <form
         className='mt-12 flex flex-col gap-3 sm:flex-row sm:items-end'
@@ -55,7 +57,7 @@ export function VerifyIndex() {
           <input id='hand-id' className={`${inputClass} font-mono`} value={id} onChange={(e) => setId(e.target.value)} placeholder='e.g. 83e434ad-87e8-…' aria-describedby='hand-id-hint' />
         </Field>
         <Button type='submit' size='lg' variant='secondary' className='sm:mb-[26px]'>
-          Verify <ArrowRight aria-hidden />
+          Check it <ArrowRight aria-hidden />
         </Button>
       </form>
 
@@ -87,7 +89,7 @@ export function VerifyIndex() {
                 {data.map((h) => (
                   <li key={h.handId}>
                     <Link href={`/verify/${encodeURIComponent(h.handId)}`} className='flex min-h-14 items-center gap-3 px-4 py-3 hover:bg-surface-2 sm:px-6'>
-                      <ShieldCheck className='size-5 shrink-0 text-accent' aria-hidden />
+                      <span aria-hidden className='font-mono text-[12px] text-fg-subtle'>#</span>
                       <span className='min-w-0 flex-1'>
                         <span className='block truncate font-semibold'>{h.gameName}</span>
                         <span className='block truncate text-caption text-fg-subtle'>

@@ -370,7 +370,16 @@ const SleekTableInner = ({
               border: '10px solid var(--rail)',
             }}
           />
-          <div aria-hidden className='absolute inset-[calc(5%+10px)] rounded-[999px] ring-1 ring-inset ring-white/10' />
+          {/* The lamp hits the middle of the felt; the edges fall away into the dark. */}
+          <div
+            aria-hidden
+            className='lamp-flicker pointer-events-none absolute inset-[calc(5%+10px)] rounded-[999px]'
+            style={{
+              background:
+                'radial-gradient(48% 58% at 50% 42%, rgba(var(--lamp-rgb),0.13) 0%, rgba(var(--lamp-rgb),0.05) 45%, transparent 70%), radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,0.38) 100%)',
+            }}
+          />
+          <div aria-hidden className='absolute inset-[calc(5%+10px)] rounded-[999px] ring-1 ring-inset ring-[rgba(var(--lamp-rgb),0.14)]' />
           <div aria-hidden className='absolute inset-[11%] rounded-[999px] border border-white/[0.06]' />
 
           {tableFinished ? (
@@ -413,7 +422,7 @@ const SleekTableInner = ({
                       >
                         {dv.winnerNickname}{' '}
                         <span className='text-fg-muted'>wins</span>{' '}
-                        <span className='tabular-nums text-positive'>
+                        <span className='font-display font-extrabold tabular-nums text-brass'>
                           {chipText(winnings || dv.pot)}
                         </span>
                       </motion.p>
@@ -430,7 +439,7 @@ const SleekTableInner = ({
                       <RollingNumber
                         value={dv.pot}
                         format={chipText}
-                        className='text-[28px] font-bold leading-8 tracking-[-0.02em] text-fg lg:text-[36px] lg:leading-10'
+                        className='font-display text-[28px] font-extrabold leading-8 tracking-[0.01em] text-fg lg:text-[36px] lg:leading-10'
                       />
                     </div>
                     {hint ? (

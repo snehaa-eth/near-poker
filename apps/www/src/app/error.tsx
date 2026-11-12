@@ -13,7 +13,7 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
   return (
     <div className='container-page flex min-h-[80dvh] flex-col items-start justify-center pt-nav'>
       <p className='eyebrow'>Something broke</p>
-      <h1 className='mt-3 font-display text-h1-sm uppercase sm:text-h1'>Misdeal</h1>
+      <h1 className='mt-3 font-display text-[40px] font-extrabold uppercase leading-[0.95] tracking-[0.01em] sm:text-[56px]'>Misdeal</h1>
       <p className='mt-3 max-w-[48ch] text-lead text-fg-muted'>
         This page hit an error on our side. Try again; if it keeps happening, the arena server may be restarting.
       </p>

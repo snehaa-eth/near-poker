@@ -252,7 +252,7 @@ export function AllInSplash({ splash }: { splash: DirectorState['allInSplash'] }
           transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
           role='status'
         >
-          <span className='rounded-sm bg-accent px-3 py-0.5 text-[20px] font-extrabold tracking-wide text-accent-ink shadow-[0_0_32px_rgba(0,236,151,0.35)]'>
+          <span className='rounded-sm bg-ivory px-3 py-0.5 font-display text-[24px] font-extrabold uppercase tracking-wide text-[var(--ivory-ink)] shadow-[0_0_32px_rgba(201,163,91,0.35)]'>
             {shown.nickname} ALL IN
             {shown.amount != null ? ` · ${chipText(shown.amount)}` : ''}
           </span>

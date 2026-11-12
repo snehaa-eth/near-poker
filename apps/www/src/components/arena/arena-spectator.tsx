@@ -148,8 +148,10 @@ export function ArenaSpectator({
     'inline-flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-sm px-2 text-fg-muted transition-colors duration-instant hover:bg-surface-2 hover:text-fg';
 
   return (
-    <div className='flex min-h-[100dvh] flex-col bg-bg pt-[var(--nav-h)] text-fg'>
+    <div className='relative flex min-h-[100dvh] flex-col bg-bg pt-[var(--nav-h)] text-fg'>
       <h1 className='sr-only'>Table {name}</h1>
+      {/* One lamp over the felt; the rest of the room in darkness. */}
+      <div aria-hidden className='lamp-pool pointer-events-none absolute inset-0 [--lamp-x:50%] [--lamp-y:48%]' />
 
       {/* One slim header */}
       <div className='sticky top-[var(--nav-h)] z-30 border-b border-border bg-bg/90 backdrop-blur'>
@@ -203,7 +205,7 @@ export function ArenaSpectator({
       <section
         aria-label={`Table ${name}`}
         className={cn(
-          'flex flex-1 flex-col transition-[padding] duration-move ease-move',
+          'relative flex flex-1 flex-col transition-[padding] duration-move ease-move',
           drawer.open && 'sm:pr-[360px]'
         )}
       >
