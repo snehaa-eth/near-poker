@@ -128,10 +128,6 @@ e2e/                    Playwright end-to-end test
 INTERFACES.md           spec: deck derivation, contract API, public view, arena protocol
 ```
 
-## Other project by the same builder
-
-Per rule Q-015: the same builder also built **Intent Guard**, a payment firewall for AI agents on NEAR (https://github.com/snehaa-eth/near-intent-guard). Independent projects; they share no code except a ported NEAR AI attestation check.
-
 ## License
 
 MIT, see [LICENSE](LICENSE).
