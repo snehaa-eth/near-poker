@@ -160,8 +160,10 @@ export function verifyHand(record: HandRecord) {
   const expectedBoard = dealt.community.slice(0, community.length);
   const boardOk = sameCards(expectedBoard, community);
   checks.push({
-    label: `Community cards (${community.length}/5 dealt)`,
-    status: community.length === 0 ? 'pending' : boardOk ? 'pass' : 'fail',
+    // The seed is only revealed once the hand is over, so an empty board here means the hand
+    // ended before the flop: nothing to check, nothing missing.
+    label: community.length === 0 ? 'Community cards (none dealt, hand ended pre-flop)' : `Community cards (${community.length}/5 dealt)`,
+    status: community.length === 0 || boardOk ? 'pass' : 'fail',
     detail:
       community.length === 0
         ? 'No board dealt (hand ended preflop)'
