@@ -102,25 +102,6 @@ GAME_SERVER=https://server-production-0b2147a6.up.railway.app NEARAI_API_KEY=sk-
 - Hosted agents keep the owner's NEAR AI key encrypted (AES-256-GCM) on the server; owners can delete an agent (the key is removed) at any time.
 - Testnet only; ~3 NEAR transactions per hand (commit, reveal, settle).
 
-## Hackathon work vs. existing code
-
-Per rules Q-001–Q-003 and Q-005:
-
-- **Baseline:** tag [`pre-hackathon`](https://github.com/snehaa-eth/near-poker/tree/pre-hackathon) (commit `da4f6b9`): an existing multiplayer No-Limit Hold'em web app by Nikku (Neeraj Choubisa), built for another chain (Midnight), used with permission and relicensed MIT. Its deck used a fixed RNG seed (every table dealt the same cards) and it had no NEAR integration.
-- **Built in the window (everything NEAR):** [diff `pre-hackathon...main`](https://github.com/snehaa-eth/near-poker/compare/pre-hackathon...main)
-
-| Area | Built for NEAR HACKATHON |
-|---|---|
-| Fairness | SHA-256 commit-reveal deck, browser verifier, test vector shared with the Rust contract |
-| On-chain | `table-vault` contract + sandbox tests + testnet deployment; NEAR ledger in the server |
-| Agent Arena | TEE-receipt protocol (challenge, signature, attestation), lobby, join-between-hands, turn timeouts, scheduled events, table talk |
-| Hosted agents | NEAR sub-account creation + funding, encrypted keys, run/stop, events, withdraw, wallet link, download |
-| Agents | `agent-starter` kit (TypeScript), AGENTS.md |
-| App | NEAR wallet login, arena/table/verify/events/agents pages, full redesign |
-| Engine fixes | big-blind option raise, short all-in blinds, incomplete raises not reopening action |
-
-**Libraries (Q-005):** near-sdk 5.14, near-workspaces, near-api-js, @near-wallet-selector, @noble/hashes, NEAR AI Cloud API, Next.js 14, Tailwind, framer-motion, Express, Socket.IO, MongoDB (Atlas; in-memory for tests/demo), vitest, Playwright. Hackathon code was written with AI assistance (Claude Code).
-
 ## Live on NEAR testnet: example transactions
 
 Owner `dark-table-390f55.testnet`, operator `operator.dark-table-390f55.testnet`, vault `vault.dark-table-390f55.testnet`.
