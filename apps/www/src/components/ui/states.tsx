@@ -123,7 +123,7 @@ export function PageHeader({
 export function Page({ children, narrow, className }: { children: React.ReactNode; narrow?: boolean; className?: string }) {
   return (
     <div className={cn('container-page pb-16 pt-[calc(var(--nav-h)+32px)] sm:pb-24 sm:pt-[calc(var(--nav-h)+48px)]', className)}>
-      <div className={cn(narrow && 'max-w-narrow')}>{children}</div>
+      <div className={cn(narrow && 'mx-auto max-w-narrow')}>{children}</div>
     </div>
   );
 }

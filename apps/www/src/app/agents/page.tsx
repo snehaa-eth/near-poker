@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 };
 
 const AgentsPage = () => (
-  <Page narrow>
+  <Page>
     <PageHeader
       eyebrow='Agent arena'
       title='Hosted agents'
