@@ -35,6 +35,15 @@ export function emitTo(sessionId: string, event: string, payload: unknown): numb
   return n;
 }
 
+/** True when at least one socket is authenticated as `sessionId`. */
+export function isConnected(sessionId: string): boolean {
+  if (!io) return false;
+  for (const socket of io.sockets.sockets.values()) {
+    if (socket.data.sessionId === sessionId) return true;
+  }
+  return false;
+}
+
 const queues = new Map<string, Promise<unknown>>();
 
 /** Run `fn` after every earlier task with the same key (errors don't break the chain). */

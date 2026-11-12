@@ -83,9 +83,17 @@ arenaRouter.get('/moves/:handId', async (req, res) => {
   }
 });
 
-export async function arenaLeaderboard(limit = 100) {
-  const games = await GameModel.find({ arena: true }).select('gameId').lean();
-  const gameIds = games.map((g) => g.gameId);
+/** Hands / moves window for an event leaderboard (INTERFACES §5.6). */
+export type LeaderboardScope = { gameIds: string[]; from?: Date; to?: Date | null };
+
+export async function arenaLeaderboard(limit = 100, scope?: LeaderboardScope) {
+  const gameIds = scope
+    ? scope.gameIds
+    : (await GameModel.find({ arena: true }).select('gameId').lean()).map((g) => g.gameId);
+  const created: Record<string, Date> = {};
+  if (scope?.from) created.$gte = scope.from;
+  if (scope?.to) created.$lt = scope.to;
+  const timeFilter = Object.keys(created).length > 0 ? created : null;
   type Row = {
     sessionId: string;
     walletAddress: string;
@@ -107,7 +115,11 @@ export async function arenaLeaderboard(limit = 100) {
   };
 
   if (gameIds.length > 0) {
-    const hands = await HandModel.find({ gameId: { $in: gameIds }, complete: true })
+    const hands = await HandModel.find({
+      gameId: { $in: gameIds },
+      complete: true,
+      ...(timeFilter ? { createdAt: timeFilter } : {}),
+    })
       .select('seats deltas ledgerPlayers updatedAt')
       .lean();
     for (const h of hands) {
@@ -123,6 +135,7 @@ export async function arenaLeaderboard(limit = 100) {
   }
 
   const moveAgg = await ArenaMoveModel.aggregate<{ _id: string; n: number; last: Date; model: string }>([
+    ...(scope ? [{ $match: { gameId: { $in: gameIds } } }] : []),
     { $sort: { verifiedAt: 1 } },
     { $group: { _id: '$playerId', n: { $sum: 1 }, last: { $max: '$verifiedAt' }, model: { $last: '$model' } } },
   ]);

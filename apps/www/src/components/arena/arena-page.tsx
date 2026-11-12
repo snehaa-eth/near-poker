@@ -34,7 +34,19 @@ function tableStakes(t: ArenaTable) {
   return { minChips, smallBlind, bigBlind };
 }
 
+/** Server table status → what a spectator should read. */
+const STATUS_LABEL: Record<string, string> = {
+  'between-hands': 'Next hand starting',
+  dealing: 'Dealing',
+  playing: 'Playing',
+  shuffling: 'Shuffling',
+  waiting: 'Waiting',
+  ended: 'Finished',
+};
+
 const STATUS_STYLE: Record<string, string> = {
+  'between-hands': 'bg-amber-50 text-amber-700 border-amber-200',
+  dealing: 'bg-sky-50 text-sky-700 border-sky-200',
   waiting: 'bg-amber-50 text-amber-700 border-amber-200',
   shuffling: 'bg-sky-50 text-sky-700 border-sky-200',
   playing: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -42,6 +54,8 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 const STATUS_DOT: Record<string, string> = {
+  'between-hands': 'bg-amber-500',
+  dealing: 'bg-sky-500',
   waiting: 'bg-amber-500',
   shuffling: 'bg-sky-500',
   playing: 'bg-emerald-500',
@@ -84,7 +98,7 @@ function ArenaTablesTable({
               <th className='px-4 py-2.5 font-semibold'>Min buy-in</th>
               <th className='px-4 py-2.5 font-semibold'>Agents</th>
               <th className='px-4 py-2.5 text-right font-semibold'>Hands</th>
-              <th className='px-4 py-2.5 text-right font-semibold'>Join</th>
+              <th className='px-4 py-2.5 text-right font-semibold'>Seats</th>
               <th className='px-4 py-2.5 text-right font-semibold'>
                 <span className='sr-only'>Watch</span>
               </th>
@@ -119,7 +133,7 @@ function ArenaTablesTable({
                   <td className='px-4 py-3'>
                     <span
                       className={cn(
-                        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold capitalize',
+                        'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-semibold',
                         STATUS_STYLE[table.status] ??
                           'border-neutral-200 bg-neutral-100 text-neutral-600'
                       )}
@@ -130,7 +144,7 @@ function ArenaTablesTable({
                           STATUS_DOT[table.status] ?? 'bg-neutral-400'
                         )}
                       />
-                      {table.status}
+                      {STATUS_LABEL[table.status] ?? table.status}
                     </span>
                   </td>
                   <td className='px-4 py-3'>
@@ -167,21 +181,36 @@ function ArenaTablesTable({
                           ? `${n} agent${n === 1 ? '' : 's'}`
                           : 'Waiting for agents'}
                     </p>
+                    {table.waiting && table.waiting.length > 0 ? (
+                      <p className='mt-0.5 truncate text-[11px] font-medium text-amber-700'>
+                        +{' '}
+                        {table.waiting.map((w) => w.nickname).join(', ')}{' '}
+                        · joining next hand
+                      </p>
+                    ) : null}
                   </td>
                   <td className='px-4 py-3 text-right tabular-nums text-neutral-700'>
                     {table.handsPlayed.toLocaleString()}
                   </td>
                   <td className='px-4 py-3 text-right'>
-                    <EnterAgentButton
-                      label='Enter an agent'
-                      variant='mint'
-                      className='h-8 px-3 text-xs'
-                      pool={{
-                        name: table.name || 'Arena table',
-                        gameId: table.gameId,
-                        minChips: stakes.minChips,
-                      }}
-                    />
+                    {(() => {
+                      const free =
+                        table.freeSeats ??
+                        Math.max(0, 6 - n - (table.waiting?.length ?? 0));
+                      return (
+                        <span
+                          className='inline-flex flex-col items-end'
+                          title='Agents cannot pick a table: POST /arena/join queues them, and they sit down at the next free seat (from the next hand).'
+                        >
+                          <span className='text-[13px] font-semibold tabular-nums text-neutral-900'>
+                            {free > 0 ? `${free} free` : 'Full'}
+                          </span>
+                          <span className='text-[10px] uppercase tracking-wide text-neutral-400'>
+                            {free > 0 ? 'next queued agent sits here' : 'new agents queue'}
+                          </span>
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className='px-4 py-3 text-right'>
                     <Link
@@ -291,6 +320,14 @@ export const ArenaPage = ({ mock = false }: { mock?: boolean }) => {
     retry: false,
   });
   const tables = data ?? [];
+  const { data: status } = useQuery({
+    queryKey: ['arena-status', mock],
+    queryFn: () => (mock ? Promise.resolve(null) : api.arenaStatus()),
+    refetchInterval: 5000,
+    retry: false,
+  });
+  const queued = status?.queue.length ?? 0;
+  const minAgents = status?.minAgents ?? 2;
 
   return (
     <div className='mx-auto w-full max-w-6xl px-4 pb-20 pt-20 sm:px-6 sm:pt-24 lg:px-8'>
@@ -345,6 +382,17 @@ export const ArenaPage = ({ mock = false }: { mock?: boolean }) => {
           </h2>
           <span className='text-xs text-neutral-400'>refreshes every 5s</span>
         </div>
+        {!mock && status ? (
+          <p className='mt-2 inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs text-neutral-600'>
+            <span className='font-semibold tabular-nums text-neutral-900'>
+              {queued} agent{queued === 1 ? '' : 's'} waiting
+            </span>
+            <span className='text-neutral-300'>·</span>
+            {queued > 0 && queued < minAgents
+              ? `a table opens at ${minAgents} (or the next free seat frees up)`
+              : `a new table opens at ${minAgents}; free seats fill from the queue`}
+          </p>
+        ) : null}
         <div className='mt-3'>
           {isLoading ? (
             <p className='text-sm text-neutral-500'>Loading arena tables…</p>
@@ -359,7 +407,10 @@ export const ArenaPage = ({ mock = false }: { mock?: boolean }) => {
                 No arena tables right now
               </p>
               <p className='mt-1 text-sm text-neutral-500'>
-                A table opens as soon as two agents are queued.{' '}
+                {queued === 1
+                  ? 'One agent is waiting for an opponent; a table opens when a second agent joins.'
+                  : 'A table opens as soon as two agents are queued; a lone agent waits for an opponent.'}{' '}
+                Once tables run, new agents sit down at a free seat from the next hand.{' '}
                 <Link
                   href='/arena?mock=1'
                   className='font-medium text-[#1D9BF0] hover:underline'

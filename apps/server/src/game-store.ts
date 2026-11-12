@@ -148,6 +148,16 @@ async function persistEvent(
   });
 }
 
+/**
+ * Arena hook: agents seated at an arena table who join at the start of the next hand
+ * (shown to spectators as "joining next hand"). Set by arena/lobby.ts.
+ */
+export type ArenaWaitingSeat = { nickname: string; walletAddress: string | null; model?: string };
+let arenaWaitingProvider: (gameId: string) => ArenaWaitingSeat[] = () => [];
+export function setArenaWaitingProvider(fn: (gameId: string) => ArenaWaitingSeat[]) {
+  arenaWaitingProvider = fn;
+}
+
 /** Arena hook: called after every save of an arena table (turn engine + hand loop). */
 type ArenaStateListener = (state: StoredGame) => void;
 let arenaStateListener: ArenaStateListener | null = null;
@@ -414,6 +424,7 @@ export async function getPublicState(
       return bot ? { ...p, bot: { ...bot } } : p;
     });
   }
+  let arenaWaiting: ArenaWaitingSeat[] | undefined;
   if (state.arena) {
     view.arena = true;
     const agents = await getAgentInfoFor(view.players.map((p) => p.id));
@@ -421,13 +432,15 @@ export async function getPublicState(
       const agent = agents.get(p.id);
       return agent ? { ...p, agent } : p;
     });
+    arenaWaiting = arenaWaitingProvider(state.gameId);
   }
   if (view.fairness) {
     const txs = txCache.get(view.fairness.handId);
     if (txs?.commit && !view.fairness.committedTx) view.fairness.committedTx = txs.commit;
     if (txs?.reveal && view.fairness.revealed) view.fairness.revealed.revealTx = txs.reveal;
   }
-  return view;
+  // Arena: agents seated between hands who are dealt in from the next hand (INTERFACES §5.2).
+  return arenaWaiting ? { ...view, arenaWaiting } : view;
 }
 
 type Mutator = (state: StoredGame) => StoredGame;
@@ -978,6 +991,60 @@ export async function prepareArenaHand(gameId: string, leaving: Set<string>) {
     });
   }
   return { state: next, removed };
+}
+
+/**
+ * Between hands on an arena table: seat newcomers so the NEXT hand deals them in
+ * (INTERFACES.md §5.2 "sit down between hands"). Each gets the lowest free seat.
+ * `nlhe` is reset so the next `startFairHand` builds its player order, entropy
+ * request and ledger commit from the full seat list (including the newcomers).
+ */
+export async function admitArenaPlayers(
+  gameId: string,
+  players: Array<{ id: string; nickname: string }>
+) {
+  if (starting.has(gameId)) throw new Error('HandStarting');
+  const state = await load(gameId);
+  if (!state) throw new Error('GameNotFound');
+  if (!state.arena) throw new Error('NotArenaTable');
+  if (handActive(state)) throw new Error('HandInProgress');
+  const max = Math.min(6, state.maxPlayers ?? 6);
+  const taken = new Set(state.players.map((p) => p.seat));
+  const nextPlayers = [...state.players];
+  const added: string[] = [];
+  for (const p of players) {
+    if (nextPlayers.some((x) => x.id === p.id)) continue;
+    let seat = 0;
+    while (taken.has(seat)) seat += 1;
+    if (seat >= max || nextPlayers.length >= max) throw new Error('LobbyFull');
+    taken.add(seat);
+    added.push(p.id);
+    nextPlayers.push({
+      id: p.id,
+      nickname: p.nickname,
+      seat,
+      chipsInPot: 0,
+      folded: false,
+      shuffled: false,
+      holeCards: [],
+      chosenCommunity: [],
+      weight: 0,
+    });
+  }
+  if (added.length === 0) return { state, added };
+  const next = await save(
+    { ...state, players: nextPlayers, nlhe: null },
+    { type: 'arena:join', actorId: null, payload: { added } }
+  );
+  for (const id of added) {
+    await recordGameActivity({
+      sessionId: id,
+      type: 'arena:join',
+      summary: `Sat down at arena table ${gameId.slice(0, 8)}`,
+      gameId,
+    });
+  }
+  return { state: next, added };
 }
 
 /** Close an arena table between hands: unseat everyone and mark it ended. */
