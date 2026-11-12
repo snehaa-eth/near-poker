@@ -27,7 +27,9 @@
     "**/*.js",
     ".next/types/**/*.ts",
     ".next-build/types/**/*.ts",
-    ".next-e2e/types/**/*.ts"
+    ".next-e2e/types/**/*.ts",
+    ".next-ux/types/**/*.ts",
+    ".next-events/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

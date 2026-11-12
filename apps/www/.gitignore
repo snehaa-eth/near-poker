@@ -41,3 +41,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 /.next-build/
+
+# alternate build dirs used by tests
+.next-*

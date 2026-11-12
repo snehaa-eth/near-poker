@@ -80,6 +80,62 @@ export type ArenaTable = {
   /** Starting blinds for the table (from lobby minChips or live hand). */
   smallBlind?: number;
   bigBlind?: number;
+  /** Agents seated between hands, dealt in from the next hand (INTERFACES §5.2). */
+  waiting?: Array<{ playerId?: string; nickname: string; walletAddress?: string; model?: string }>;
+  /** Seats still free (6 minus seated and waiting). */
+  freeSeats?: number;
+  /** Scheduled event this table belongs to (INTERFACES §5.6). */
+  eventId?: string | null;
+  /** Event over: the table finishes its hand and closes. */
+  closing?: boolean;
+};
+
+/** GET /arena/status (INTERFACES §5.2). */
+export type ArenaStatus = {
+  enabled: boolean;
+  minAgents: number;
+  minChips: number;
+  turnMs: number;
+  handGapMs: number;
+  queue: Array<{ position: number; nickname: string; walletAddress: string; eventId?: string }>;
+  me?: { gameId: string | null };
+};
+
+/** Scheduled arena event (INTERFACES §5.6), as listed by GET /events. */
+export type ArenaEventSummary = {
+  eventId: string;
+  name: string;
+  description: string;
+  prize: string | null;
+  startsAt: string;
+  endsAt: string;
+  durationMin: number;
+  maxAgents: number;
+  status: 'scheduled' | 'live' | 'ended';
+  registered: number;
+  startedAt: string | null;
+  endedAt: string | null;
+};
+
+export type ArenaEventLeaderboardEntry = {
+  rank: number;
+  walletAddress: string;
+  nickname: string;
+  model: string;
+  hands: number;
+  netChips: number;
+  movesVerified: number;
+};
+
+/** GET /events/:id (INTERFACES §5.6). */
+export type ArenaEventDetail = ArenaEventSummary & {
+  registrations: Array<{ walletAddress: string; nickname: string; model: string | null; registeredAt: string }>;
+  gameIds: string[];
+  tables: ArenaTable[];
+  leaderboard: ArenaEventLeaderboardEntry[];
+  /** Standings frozen (event ended and its tables closed). */
+  final: boolean;
+  me?: { registered: boolean };
 };
 
 /** GET /arena/leaderboard (INTERFACES §5.4). */
@@ -162,6 +218,10 @@ export type PublicGameView = {
     bot?: BotInfo;
     /** Arena tables only (INTERFACES §5.4). */
     agent?: AgentInfo;
+    /** No chips behind and still in the hand (newer servers). */
+    allIn?: boolean;
+    /** Chips put in across the whole hand (newer servers). */
+    committed?: number;
   }>;
   communityCards: number[];
   pot: number;
@@ -186,6 +246,28 @@ export type PublicGameView = {
   arena?: boolean;
   /** Top winner's best hand name ("Two Pair", …) when the hand ended at showdown. */
   winningHand?: string;
+  /** Arena: agents seated between hands, dealt in from the next hand ("joining next hand"). */
+  arenaWaiting?: Array<{ nickname: string; walletAddress: string | null; model?: string }>;
+  /* ---- Spectator broadcast fields (optional: older servers omit them) ---- */
+  smallBlind?: number;
+  bigBlind?: number;
+  sbPlayerId?: string | null;
+  bbPlayerId?: string | null;
+  /** This hand's betting actions; `amount` = the actor's street total after acting. */
+  actions?: PublicAction[];
+  /** Main + side pots (in-hand: completed streets only; at hand end: awarded pots). */
+  pots?: Array<{ amount: number; eligible: string[] }>;
+  /** Hand end only: pot shares paid out. */
+  winners?: Array<{ playerId: string; amount: number; potIndex: number }>;
+  /** Hand end at showdown only: each contender's best hand name. */
+  showdownHands?: Array<{ playerId: string; handName: string }>;
+};
+
+export type PublicAction = {
+  playerId: string;
+  street: string;
+  type: 'fold' | 'check' | 'call' | 'bet' | 'raise' | 'all-in' | string;
+  amount?: number;
 };
 
 /** GET /games/:id/hands — recent provably-fair hands, newest first. */
@@ -394,6 +476,23 @@ export const api = {
       ),
       'moves'
     ),
+  /** INTERFACES §5.2 — queue + settings (null when the endpoint is absent). */
+  arenaStatus: () => requestOr<ArenaStatus | null>('/arena/status', null),
+  /** INTERFACES §5.6 — scheduled arena events. */
+  events: async () =>
+    listFrom<ArenaEventSummary>(await requestOr<unknown>('/events', []), 'events'),
+  event: (eventId: string) =>
+    request<ArenaEventDetail>(`/events/${encodeURIComponent(eventId)}`),
+  eventRegister: (eventId: string, model?: string) =>
+    request<{ registered: boolean }>(`/events/${encodeURIComponent(eventId)}/register`, {
+      method: 'POST',
+      body: JSON.stringify(model ? { model } : {}),
+    }),
+  eventUnregister: (eventId: string) =>
+    request<{ registered: boolean }>(`/events/${encodeURIComponent(eventId)}/unregister`, {
+      method: 'POST',
+      body: '{}',
+    }),
   /** INTERFACES §5.2 — agents normally call these from agent-starter. */
   arenaJoin: () =>
     request<{ queued?: boolean; position?: number; gameId?: string }>(
@@ -444,4 +543,151 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+};
+
+// ─── Hosted agents (created on the website, run by the server) ──────────────
+
+export type HostedPersona = { id: string; label: string; blurb: string };
+
+export type HostedConfig = {
+  enabled: boolean;
+  reason?: string;
+  chain: 'near' | 'local';
+  defaultModel: string;
+  personas: HostedPersona[];
+  fundNear: number;
+  depositNear: number;
+  maxCallsDefault: number;
+  customMax: number;
+};
+
+export type HostedAgentPublic = {
+  agentId: string;
+  name: string;
+  persona: string;
+  personaLabel: string;
+  model: string;
+  walletAddress: string;
+  chain: 'near' | 'local';
+  walletUrl: string | null;
+  state: 'queued' | 'playing' | 'idle' | 'error' | 'deleted';
+  gameId: string | null;
+  stats: { hands: number; netChips: number; movesVerified: number };
+  createdAt?: string;
+};
+
+export type HostedAgentOwner = HostedAgentPublic & {
+  owner: true;
+  customPrompt: string;
+  maxCalls: number;
+  eventId: string | null;
+  statusDetail: string;
+  chips: number | null;
+  lastRun: { reason: string; hands: number; moves: number; llmCalls: number; endedAt: string } | null;
+  runs: number;
+  txs: { createAccount?: string; deposit?: string };
+  logs: string[];
+  appliesNextRun?: boolean;
+};
+
+export type HostedCreateInput = {
+  name: string;
+  persona: string;
+  customPrompt?: string;
+  model?: string;
+  nearAiKey: string;
+  maxCalls?: number;
+  eventId?: string;
+};
+
+export type HostedCreated = {
+  agentId: string;
+  ownerToken: string;
+  manageUrl: string;
+  walletAddress: string;
+  chain: 'near' | 'local';
+  txs: { createAccount?: string; deposit?: string };
+  warning?: string;
+};
+
+export type ArenaEventOption = { id: string; name: string; startsAt?: string };
+
+const ownerHeaders = (token: string) => ({ 'x-owner-token': token });
+
+export const hostedApi = {
+  config: () => request<HostedConfig>('/hosted-agents/config'),
+  list: async () =>
+    listFrom<HostedAgentPublic>(
+      await requestOr<unknown>('/hosted-agents', []),
+      'agents'
+    ),
+  create: (input: HostedCreateInput) =>
+    request<HostedCreated>('/hosted-agents', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  get: (id: string, token?: string | null) =>
+    request<HostedAgentPublic | HostedAgentOwner>(
+      `/hosted-agents/${encodeURIComponent(id)}`,
+      token ? { headers: ownerHeaders(token) } : undefined
+    ),
+  play: (id: string, token: string) =>
+    request<HostedAgentOwner>(`/hosted-agents/${encodeURIComponent(id)}/play`, {
+      method: 'POST',
+      body: '{}',
+      headers: ownerHeaders(token),
+    }),
+  stop: (id: string, token: string, force = false) =>
+    request<{ stopping: boolean }>(
+      `/hosted-agents/${encodeURIComponent(id)}/stop`,
+      { method: 'POST', body: JSON.stringify({ force }), headers: ownerHeaders(token) }
+    ),
+  update: (
+    id: string,
+    token: string,
+    patch: Partial<Pick<HostedCreateInput, 'persona' | 'customPrompt' | 'model' | 'nearAiKey' | 'maxCalls' | 'eventId'>>
+  ) =>
+    request<HostedAgentOwner>(`/hosted-agents/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+      headers: ownerHeaders(token),
+    }),
+  remove: (id: string, token: string) =>
+    request<{ deleted: boolean }>(`/hosted-agents/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: ownerHeaders(token),
+    }),
+  /** Returns the .tar.gz as a Blob (secrets travel only in this owner-authenticated response). */
+  download: async (id: string, token: string, includeApiKey: boolean) => {
+    const res = await fetch(
+      `${env.NEXT_PUBLIC_API_URL}/hosted-agents/${encodeURIComponent(id)}/download`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': '1',
+          ...ownerHeaders(token),
+        },
+        body: JSON.stringify({ includeApiKey }),
+      }
+    );
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error ?? `Download failed (${res.status})`);
+    }
+    return res.blob();
+  },
+  /** Scheduled events, if the server has them (404 → null: hide the picker). */
+  events: async (): Promise<ArenaEventOption[] | null> => {
+    const data = await requestOr<unknown>('/events', null).catch(() => null);
+    if (data === null) return null;
+    return listFrom<Record<string, unknown>>(data, 'events')
+      .map((e) => ({
+        id: String(e.id ?? e.eventId ?? ''),
+        name: String(e.name ?? e.title ?? e.id ?? 'Event'),
+        startsAt: typeof e.startsAt === 'string' ? e.startsAt : undefined,
+      }))
+      .filter((e) => e.id);
+  },
 };

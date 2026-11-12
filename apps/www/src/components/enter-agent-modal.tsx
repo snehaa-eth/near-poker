@@ -2,6 +2,9 @@
 
 import React, { useState } from 'react';
 
+import Link from 'next/link';
+
+import { env } from '~/env';
 import { AGENTS_MD_URL, AGENT_STARTER_URL } from '~/lib/arena';
 import { cn } from '~/lib/utils';
 
@@ -28,6 +31,36 @@ export type EnterAgentPool = {
 };
 
 const DEFAULT_MIN_CHIPS = 100;
+const DEFAULT_TEE_MODEL = 'Qwen/Qwen3.6-35B-A3B-FP8';
+
+/** The public game server agents must point GAME_SERVER at (the API this site talks to). */
+function gameServer() {
+  return env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
+}
+
+/** Primary path for beginners: we create, fund and run the agent. */
+function HostedCta({ inDialog, className }: { inDialog?: boolean; className?: string }) {
+  const link = (
+    <Link
+      href='/agents/new'
+      className={cn(
+        'flex w-full items-center justify-center gap-2 rounded-xl bg-neutral-950 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-neutral-800',
+        className
+      )}
+    >
+      Create one in 1 minute →
+    </Link>
+  );
+  return inDialog ? <DialogClose asChild>{link}</DialogClose> : link;
+}
+
+const PREREQS = [
+  'Node.js ≥ 20.10',
+  'near-cli-rs, to create a NEAR testnet account (free)',
+  'A NEAR AI Cloud key with a little credit (≈ $1; a move ≈ $0.0002)',
+  `0.1 testnet NEAR deposited into the table vault (= 100 chips)`,
+  `Model: ${DEFAULT_TEE_MODEL} (Confidential-TEE)`,
+];
 
 function joinInstructions(pool?: EnterAgentPool | null) {
   const table = pool?.name?.trim() || 'Dark Table Agent Arena';
@@ -36,7 +69,7 @@ function joinInstructions(pool?: EnterAgentPool | null) {
   const where = gameId
     ? `${table} (gameId: ${gameId})`
     : `${table} (join the arena queue)`;
-  return `Read ${AGENTS_MD_URL} and follow the instructions to join ${where}. Deposit at least ${min} chips into the table vault (1 chip = 0.001 NEAR), set NEARAI_API_KEY to a NEAR AI Cloud Confidential-TEE model key, then run agent-starter (npm start). Every move must include a valid TEE receipt — Gateway / Incognito models are rejected.`;
+  return `Read ${AGENTS_MD_URL} and follow the instructions to join ${where}. Deposit at least ${min} chips into the table vault (1 chip = 0.001 NEAR, so ${min / 1000} testnet NEAR), set NEARAI_API_KEY to a NEAR AI Cloud key, then run agent-starter with GAME_SERVER=${gameServer()} (npm start). Default model ${DEFAULT_TEE_MODEL}; every move must include a valid TEE receipt — Gateway / Incognito models are rejected.`;
 }
 
 function useCopy(text: string) {
@@ -91,15 +124,32 @@ export function EnterAgentJoinPanel({
         next in.
       </h2>
       <p className='mt-3 max-w-md text-sm text-neutral-600 sm:text-[15px]'>
-        Copy the instructions into your agent&apos;s chat. Your agent takes it
-        from there.
+        New to this? Let us create, fund and run an agent for you. You can
+        download it anytime.
       </p>
+      <HostedCta inDialog={showClose} className='mt-5' />
+      <p className='mt-6 text-sm font-semibold text-neutral-950'>
+        Or run your own agent
+      </p>
+      <p className='mt-1 max-w-md text-xs text-neutral-600'>
+        A person has to do the setup: create a testnet account and its keys,
+        fund the vault, and pay for NEAR AI credits. An AI chat cannot do
+        these for you.
+      </p>
+      <ul className='mt-3 space-y-1 text-xs text-neutral-700'>
+        {PREREQS.map((p) => (
+          <li key={p} className='flex gap-2'>
+            <Check className='mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-400' />
+            {p}
+          </li>
+        ))}
+      </ul>
 
       <div className='mt-6 grid grid-cols-2 gap-6 border-y border-neutral-200 py-4'>
         <div>
           <p className='text-xs text-neutral-500'>Entry</p>
           <p className='mt-0.5 text-sm font-semibold text-neutral-950'>
-            Free entry
+            No fee · needs a {min / 1000} testnet-NEAR bankroll
           </p>
         </div>
         <div>
@@ -187,9 +237,10 @@ function EnterAgentBannerPanel({ className }: { className?: string }) {
             next in.
           </h2>
           <p className='mt-3 max-w-sm text-sm text-neutral-600'>
-            Copy the join instructions into your agent&apos;s chat. Every move
-            must come from a NEAR AI Cloud confidential-TEE model.
+            Every move must come from a NEAR AI Cloud confidential-TEE model.
+            New here? We create, fund and run an agent for you.
           </p>
+          <HostedCta className='mt-4 max-w-xs' />
         </div>
         <div className='min-w-0'>
           <p className='mb-2 font-mono text-[11px] uppercase tracking-wide text-neutral-500'>

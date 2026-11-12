@@ -208,7 +208,7 @@ export class Tee {
   }
 
   /** Fetch the model attestation report with a fresh nonce and record its signer set. Not a completion. */
-  async attest(): Promise<{ ok: boolean; signers: string[]; nonce: string; error?: string }> {
+  async attest(): Promise<{ ok: boolean; signers: string[]; nonce: string; error?: string; authError?: boolean }> {
     const nonce = randomBytes(32).toString('hex');
     try {
       const qs = new URLSearchParams({ model: this.model, nonce, signing_algo: 'ed25519' });
@@ -216,6 +216,9 @@ export class Tee {
         headers: { ...this.auth, 'x-no-aliasing': 'true' },
         signal: AbortSignal.timeout(15_000),
       });
+      if (r.status === 401 || r.status === 403) {
+        return { ok: false, signers: [], nonce, error: `HTTP ${r.status}: invalid NEARAI_API_KEY (check the key at https://cloud.near.ai)`, authError: true };
+      }
       if (!r.ok) return { ok: false, signers: [], nonce, error: `HTTP ${r.status}` };
       const rep = (await r.json()) as AttestationReport;
       const signers = [
@@ -258,6 +261,7 @@ export class Tee {
       ({ res, requestBody } = await send(false));
     }
     const bytes = new Uint8Array(await res.arrayBuffer()); // read the body ONCE, keep exact bytes
+    if (res.status === 401 || res.status === 403) throw new Error(`chat/completions HTTP ${res.status}: invalid NEARAI_API_KEY (or no credit left)`);
     if (!res.ok) throw new Error(`chat/completions HTTP ${res.status}: ${Buffer.from(bytes).toString('utf8').slice(0, 200)}`);
     const responseBody = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
     if (sha256Hex(Buffer.from(responseBody, 'utf8')) !== sha256Hex(bytes)) throw new Error('response body is not round-trippable UTF-8');

@@ -191,4 +191,40 @@ describe('ArenaAgent', () => {
     assert.match(s.reason, /too small/);
     assert.equal(posted.includes('/arena/join'), false);
   });
+
+  it('EVENT_ID: registers, waits for the event to go live without LLM calls, then joins', async () => {
+    mock.completions = 0;
+    const socket = new FakeSocket();
+    const calls: Array<{ path: string; body?: any }> = [];
+    let status: 'scheduled' | 'live' | 'ended' = 'scheduled';
+    const api = async (path: string, body?: unknown): Promise<any> => {
+      calls.push({ path, body });
+      if (path === '/events/friday-night-arena/register') return { registered: true };
+      if (path === '/events/friday-night-arena') {
+        return { eventId: 'friday-night-arena', name: 'Friday Night Arena', status, startsAt: new Date(Date.now() + 1000).toISOString(), me: { registered: true } };
+      }
+      if (path === '/arena/join') return { gameId: 'ev1' };
+      throw new Error(`unexpected ${path}`);
+    };
+    const tee = new Tee({ apiKey: 'test-key', baseUrl: mock.baseUrl });
+    const logs: string[] = [];
+    const agent = new ArenaAgent({ api: api as any, socket, tee, maxLlmCalls: 10, eventId: 'friday-night-arena', eventPollMs: 20, log: (s) => logs.push(s) });
+    const started = agent.start();
+    await waitFor(() => calls.filter((c) => c.path === '/events/friday-night-arena').length >= 2);
+    assert.equal(calls[0]!.path, '/events/friday-night-arena/register');
+    assert.equal(calls[0]!.body.model, tee.model);
+    assert.ok(!calls.some((c) => c.path === '/arena/join'), 'no join before the start');
+    status = 'live';
+    await started;
+    assert.ok(socket.emitted.some((e) => e.event === 'game:joinRoom' && e.payload.gameId === 'ev1'));
+    assert.equal(mock.completions, 0);
+    assert.ok(logs.some((l) => /starts in/.test(l)));
+    agent.stop('test done');
+
+    // An event that already ended → the agent stops instead of playing.
+    status = 'ended';
+    const late = new ArenaAgent({ api: api as any, socket: new FakeSocket(), tee, maxLlmCalls: 10, eventId: 'friday-night-arena', eventPollMs: 20, log: () => {} });
+    await late.start();
+    assert.match((await late.done).reason, /has ended/);
+  });
 });

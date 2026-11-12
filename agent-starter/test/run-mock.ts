@@ -1,6 +1,6 @@
 // Free local stand-in for NEAR AI Cloud (no real API calls). Prints its base URL.
 import { writeFileSync } from 'node:fs';
-import { startMockNearAi } from './mock-nearai.ts';
+import { startMockNearAi } from './mock-nearai.js';
 const m = await startMockNearAi();
 writeFileSync(process.argv[2]!, m.baseUrl);
 console.log('mock NEAR AI at', m.baseUrl, 'signer', m.signingAddress.slice(0, 16));

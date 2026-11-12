@@ -56,6 +56,15 @@ describe('TEE receipts (mock NEAR AI)', () => {
     assert.equal(b.ok, false, 'a model without model attestations (Incognito / gateway-only) is refused');
   });
 
+  it('a rejected API key is reported as "invalid NEARAI_API_KEY", not as a non-TEE model', async () => {
+    const tee = new Tee({ apiKey: 'wrong-key', baseUrl: mock.baseUrl });
+    const att = await tee.attest();
+    assert.equal(att.ok, false);
+    assert.equal(att.authError, true);
+    assert.match(att.error ?? '', /invalid NEARAI_API_KEY/);
+    await assert.rejects(tee.decide(msgs('ab'.repeat(16)), 'ab'.repeat(16)), /invalid NEARAI_API_KEY/);
+  });
+
   it('receipt passes the independent §5.3 checks 1–5 (and the local 1–6)', async () => {
     const tee = new Tee({ apiKey: 'test-key', baseUrl: mock.baseUrl });
     await tee.attest();

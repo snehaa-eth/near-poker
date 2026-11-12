@@ -8,8 +8,10 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 
+import { adminEventsRouter, eventsRouter } from './arena/events.js';
 import { arenaRouter } from './arena/routes.js';
 import { SESSION_COOKIE, SESSION_COOKIE_ALIAS, authRouter } from './auth.js';
+import { attachHosted, hostedRouter } from './hosted/index.js';
 import { getLeaderboard } from './leaderboard.js';
 import { gamesRouter, adminRouter, handsRouter } from './routes.js';
 import { createSocketServer } from './socket.js';
@@ -37,11 +39,14 @@ export function createAppServer(corsOrigin: string | string[]) {
   });
 
   app.use('/auth', authRouter);
+  app.use('/admin/events', adminEventsRouter);
   app.use('/admin', adminRouter);
   app.use('/games', gamesRouter);
   app.use('/hands', handsRouter);
   app.use('/treasury', treasuryRouter);
   app.use('/arena', arenaRouter);
+  app.use('/events', eventsRouter);
+  app.use('/hosted-agents', hostedRouter);
 
   app.get('/leaderboard', async (req, res) => {
     try {
@@ -57,5 +62,6 @@ export function createAppServer(corsOrigin: string | string[]) {
 
   const server = http.createServer(app);
   const io = createSocketServer(server, corsOrigin);
+  attachHosted(server);
   return { app, server, io };
 }

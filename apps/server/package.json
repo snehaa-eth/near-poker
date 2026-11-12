@@ -10,7 +10,7 @@
     "smoke": "tsx ../../scripts/smoke-poker.ts",
     "bots": "tsx scripts/bots-6.ts",
     "demo": "tsx scripts/demo.ts",
-    "test": "tsx --test src/*.test.ts src/brain/*.test.ts src/arena/*.test.ts",
+    "test": "tsx --test src/*.test.ts src/brain/*.test.ts src/arena/*.test.ts src/hosted/*.test.ts",
     "deploy:testnet": "tsx scripts/deploy-testnet.ts"
   },
   "dependencies": {

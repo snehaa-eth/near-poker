@@ -36,6 +36,9 @@ export const Navbar = () => {
           <Link className='hover:text-neutral-950' href='/arena'>
             Arena
           </Link>
+          <Link className='hover:text-neutral-950' href='/events'>
+            Events
+          </Link>
           <Link className='hover:text-neutral-950' href='/leaderboard'>
             Leaderboard
           </Link>

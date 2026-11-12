@@ -69,9 +69,17 @@ export type AgentOptions = {
   leaveReserve?: number;
   strategy?: Pick<typeof defaultStrategy, 'buildSystemPrompt' | 'buildUserPrompt' | 'preRule' | 'postRule' | 'legalSummary'>;
   log?: (s: string) => void;
+  /** extra body for POST /arena/join (e.g. { eventId }) */
+  joinBody?: Record<string, unknown>;
   /** delay before re-fetching an unrevealed hand record (default 1500) */
   revealRetryMs?: number;
+  /** EVENT_ID: register for this scheduled arena event first, and wait for it to start (AGENTS.md "Events") */
+  eventId?: string;
+  /** poll interval while waiting for the event to start (default 5000) */
+  eventPollMs?: number;
 };
+
+type EventInfo = { eventId: string; name: string; status: 'scheduled' | 'live' | 'ended'; startsAt: string; me?: { registered: boolean } };
 
 export type Summary = { hands: number; handsVerified: number; handsFailed: number; llmCalls: number; movesSent: number; rejections: number; reason: string };
 
@@ -165,9 +173,53 @@ export class ArenaAgent {
       this.stop(`MAX_LLM_CALLS=${this.opts.maxLlmCalls} is too small to play`);
       return;
     }
-    const r = await this.opts.api<{ queued?: boolean; position?: number; gameId?: string }>('/arena/join', {});
+    if (this.opts.eventId) {
+      const go = await this.enterEvent(this.opts.eventId);
+      if (!go) return;
+      if (this.gameId) return; // seated by the event start already
+    }
+    const r = await this.opts.api<{ queued?: boolean; position?: number; gameId?: string }>('/arena/join', this.opts.joinBody ?? {});
     if (r.gameId) this.seat(r.gameId);
     else this.log(`⏳ queued for the arena (position ${r.position ?? '?'}) — waiting for opponents…`);
+  }
+
+  /**
+   * Register for a scheduled event (allowed until it starts), then wait for it to go live
+   * before joining, so no LLM calls are spent in the open arena meanwhile. At the start the
+   * server seats registered, connected agents at event tables (arena:seated). Returns false
+   * when the agent should not play (event over).
+   */
+  private async enterEvent(eventId: string): Promise<boolean> {
+    const id = encodeURIComponent(eventId);
+    try {
+      await this.opts.api(`/events/${id}/register`, { model: this.opts.tee.model });
+      this.log(`🎟️  registered for event ${eventId}`);
+    } catch (e) {
+      this.log(`  ⚠️  event registration: ${(e as Error).message}`);
+    }
+    const pollMs = this.opts.eventPollMs ?? 5000;
+    for (;;) {
+      if (this.finished) return false;
+      let ev: EventInfo;
+      try {
+        ev = await this.opts.api<EventInfo>(`/events/${id}`);
+      } catch (e) {
+        this.log(`  ⚠️  event ${eventId}: ${(e as Error).message} → joining the open arena`);
+        return true;
+      }
+      if (ev.status === 'ended') {
+        this.stop(`event ${eventId} has ended`);
+        return false;
+      }
+      if (ev.status === 'live') {
+        if (ev.me && !ev.me.registered) this.log(`  ⚠️  not registered for ${ev.name}: playing in the open arena`);
+        return true;
+      }
+      if (this.gameId) return true;
+      const secs = Math.max(0, Math.round((Date.parse(ev.startsAt) - Date.now()) / 1000));
+      this.log(`⏳ ${ev.name} starts in ${secs}s — waiting (no LLM calls until then)`);
+      await new Promise((r) => setTimeout(r, Math.min(pollMs, Math.max(250, secs * 1000))));
+    }
   }
 
   private seat(gameId: string) {

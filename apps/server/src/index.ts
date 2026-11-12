@@ -1,5 +1,6 @@
 import { createAppServer } from './app.js';
 import { getArenaConfig } from './arena/config.js';
+import { startEventScheduler } from './arena/events.js';
 import { isArenaTestMode } from './auth.js';
 import { connectMongo } from './db.js';
 import { hydrateGamesFromDb } from './game-store.js';
@@ -35,6 +36,8 @@ async function main() {
   server.listen(PORT, () => {
     console.log(`Poker server listening on http://localhost:${PORT}`);
   });
+  // Scheduled arena events (INTERFACES.md §5.6): reads events from Mongo every 5 s.
+  startEventScheduler();
 }
 
 main().catch((error) => {

@@ -49,8 +49,11 @@ export function legalSummary(s: Snapshot): Legal {
 
 export const NICKNAME = process.env.AGENT_NICKNAME || undefined;
 
-/** Default: a solid tight-aggressive (TAG) regular. Rewrite freely. */
-export const PERSONA = [
+/**
+ * Default: a solid tight-aggressive (TAG) regular. Rewrite freely.
+ * AGENT_PERSONA (env) overrides it; hosted agents on the website use that.
+ */
+export const PERSONA = process.env.AGENT_PERSONA?.trim() || [
   'You are "Tag", a disciplined tight-aggressive No-Limit Hold\'em regular.',
   'Preflop: play a tight range (pairs, strong broadways, suited aces/connectors in late position); raise rather than limp; fold weak offsuit hands to raises.',
   'Postflop: bet strong hands and good draws for value/protection (≈ half to two-thirds pot); check-fold air facing big bets; respect pot odds when calling.',

@@ -59,6 +59,8 @@ const gameSchema = new Schema(
     playerNicknames: { type: [String], default: [] },
     /** Agent Arena table (INTERFACES.md §5). */
     arena: { type: Boolean, default: false, index: true },
+    /** Scheduled arena event this table belongs to (INTERFACES.md §5.6), if any. */
+    eventId: { type: String, default: null, index: true },
     /** Full authoritative game state (including deck — server only). */
     state: { type: Schema.Types.Mixed, required: true },
   },
@@ -82,6 +84,7 @@ export type GameDoc = {
   playerIds: string[];
   playerNicknames: string[];
   arena?: boolean;
+  eventId?: string | null;
   state: GameState;
   createdAt?: Date;
   updatedAt?: Date;
@@ -161,6 +164,80 @@ export type HandDoc = {
 };
 
 export const HandModel = mongoose.model<HandDoc>('Hand', handSchema);
+
+/**
+ * Scheduled Agent Arena event (INTERFACES.md §5.6). Registered agents are seated at
+ * dedicated arena tables (games flagged `eventId`) from `startsAt` for `durationMin`.
+ */
+const arenaEventRegistrationSchema = new Schema(
+  {
+    /** Internal only (never returned by the API). */
+    sessionId: { type: String, required: true },
+    walletAddress: { type: String, required: true },
+    nickname: { type: String, default: '' },
+    model: { type: String, default: null },
+    registeredAt: { type: Date, required: true },
+  },
+  { _id: false }
+);
+
+const arenaEventSchema = new Schema(
+  {
+    eventId: { type: String, required: true, unique: true, index: true },
+    name: { type: String, required: true },
+    description: { type: String, default: '' },
+    prize: { type: String, default: null },
+    startsAt: { type: Date, required: true, index: true },
+    durationMin: { type: Number, default: 30 },
+    maxAgents: { type: Number, default: 24 },
+    status: {
+      type: String,
+      enum: ['scheduled', 'live', 'ended'],
+      default: 'scheduled',
+      index: true,
+    },
+    registrations: { type: [arenaEventRegistrationSchema], default: [] },
+    /** Every arena table opened for this event. */
+    gameIds: { type: [String], default: [] },
+    startedAt: { type: Date, default: null },
+    endedAt: { type: Date, default: null },
+    /** Frozen once the event ended and its last table closed. */
+    finalLeaderboard: { type: Schema.Types.Mixed, default: null },
+    finalizedAt: { type: Date, default: null },
+  },
+  { timestamps: true }
+);
+
+export type ArenaEventRegistration = {
+  sessionId: string;
+  walletAddress: string;
+  nickname: string;
+  model: string | null;
+  registeredAt: Date;
+};
+
+export type ArenaEventStatus = 'scheduled' | 'live' | 'ended';
+
+export type ArenaEventDoc = {
+  eventId: string;
+  name: string;
+  description: string;
+  prize: string | null;
+  startsAt: Date;
+  durationMin: number;
+  maxAgents: number;
+  status: ArenaEventStatus;
+  registrations: ArenaEventRegistration[];
+  gameIds: string[];
+  startedAt: Date | null;
+  endedAt: Date | null;
+  finalLeaderboard: unknown[] | null;
+  finalizedAt: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+};
+
+export const ArenaEventModel = mongoose.model<ArenaEventDoc>('ArenaEvent', arenaEventSchema);
 
 /**
  * Per-player activity ledger (deposits, withdrawals, table play).
@@ -264,3 +341,68 @@ export async function connectMongo(uri: string, dbName?: string) {
   await mongoose.connect(connectionUri);
   console.log(`MongoDB connected${dbName ? ` (db: ${dbName})` : ''}`);
 }
+
+/**
+ * Hosted agents (apps/server/src/hosted): agents created on the website and run by this server
+ * as agent-starter child processes. Secrets are AES-256-GCM encrypted with HOSTED_SECRET and
+ * never returned by public routes; the owner authenticates with a token whose sha256 is stored.
+ */
+const hostedAgentSchema = new Schema(
+  {
+    agentId: { type: String, required: true, unique: true, index: true },
+    /** 3–20 chars [a-z0-9-]; also the NEAR sub-account prefix in CHAIN=near mode. */
+    name: { type: String, required: true, unique: true, index: true },
+    /** preset id: shark | rock | trickster | calculator | custom */
+    persona: { type: String, required: true },
+    /** custom persona text (persona === 'custom'); private to the owner. */
+    customPrompt: { type: String, default: '' },
+    model: { type: String, required: true },
+    maxCalls: { type: Number, default: 40 },
+    eventId: { type: String, default: null },
+    walletAddress: { type: String, required: true, unique: true, index: true },
+    /** 'near' (real testnet sub-account) | 'local' (off-chain test path) */
+    chain: { type: String, default: 'local' },
+    encryptedNearAiKey: { type: String, required: true },
+    encryptedAgentPrivateKey: { type: String, required: true },
+    ownerTokenHash: { type: String, required: true },
+    /** idle | running | error | deleted (live table/queue state is derived at read time) */
+    status: { type: String, default: 'idle', index: true },
+    statusDetail: { type: String, default: '' },
+    /** Restart after a server reboot. */
+    wantRunning: { type: Boolean, default: false },
+    createdIp: { type: String, default: '' },
+    txs: { type: Schema.Types.Mixed, default: {} },
+    stats: { type: Schema.Types.Mixed, default: {} },
+    lastLog: { type: [String], default: [] },
+  },
+  { timestamps: { createdAt: true, updatedAt: true } }
+);
+
+export type HostedAgentDoc = {
+  agentId: string;
+  name: string;
+  persona: string;
+  customPrompt: string;
+  model: string;
+  maxCalls: number;
+  eventId: string | null;
+  walletAddress: string;
+  chain: 'near' | 'local';
+  encryptedNearAiKey: string;
+  encryptedAgentPrivateKey: string;
+  ownerTokenHash: string;
+  status: 'idle' | 'running' | 'error' | 'deleted';
+  statusDetail: string;
+  wantRunning: boolean;
+  createdIp: string;
+  txs: { createAccount?: string; deposit?: string };
+  stats: {
+    runs?: number;
+    lastRun?: { reason: string; hands: number; moves: number; llmCalls: number; endedAt: string };
+  };
+  lastLog: string[];
+  createdAt?: Date;
+  updatedAt?: Date;
+};
+
+export const HostedAgentModel = mongoose.model<HostedAgentDoc>('HostedAgent', hostedAgentSchema);
