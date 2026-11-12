@@ -246,6 +246,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      // Lets the API work behind a free ngrok tunnel (skips its browser warning page).
+      'ngrok-skip-browser-warning': '1',
       ...(init?.headers ?? {}),
     },
   });

@@ -37,6 +37,7 @@ export const SocketProvider = ({
     const s = io(env.NEXT_PUBLIC_WS_URL, {
       withCredentials: true,
       transports: ['websocket', 'polling'],
+      extraHeaders: { 'ngrok-skip-browser-warning': '1' },
     });
 
     const onConnect = () => setConnected(true);

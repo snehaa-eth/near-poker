@@ -8,7 +8,11 @@ import { getLedger } from './ledger.js';
 const PORT = Number(process.env.PORT ?? 4000);
 const MONGODB_URI = process.env.MONGODB_URI ?? 'memory';
 const MONGODB_DB = process.env.MONGODB_DB;
-const CORS_ORIGIN = process.env.CORS_ORIGIN ?? 'http://localhost:3000';
+// Comma-separated list, e.g. "http://localhost:3000,https://abc.ngrok-free.app" for a public tunnel.
+const CORS_ORIGIN = (process.env.CORS_ORIGIN ?? 'http://localhost:3000')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
 
 async function main() {
   await connectMongo(MONGODB_URI, MONGODB_DB);

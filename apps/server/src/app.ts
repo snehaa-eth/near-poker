@@ -15,7 +15,7 @@ import { gamesRouter, adminRouter, handsRouter } from './routes.js';
 import { createSocketServer } from './socket.js';
 import { treasuryRouter } from './treasury.js';
 
-export function createAppServer(corsOrigin: string) {
+export function createAppServer(corsOrigin: string | string[]) {
   const app = express();
   app.use(
     cors({
