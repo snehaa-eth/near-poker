@@ -101,7 +101,9 @@ export function nearChainOps(cfg: HostedConfig): ChainOps {
       const acc = new Account(id, p, key);
       const r = await acc.signAndSendTransaction({
         receiverId: cfg.vaultId!,
-        actions: [actions.functionCall('withdraw', { amount: yocto.toString() }, teraToGas('50'), 0n)],
+        // 20 TGas covers withdraw + the transfer + the vault's 10 TGas callback. Prepaid gas is charged
+        // upfront at a pessimistic price, so a big budget would need more NEAR than a small agent wallet has.
+        actions: [actions.functionCall('withdraw', { amount: yocto.toString() }, teraToGas('20'), 0n)],
       });
       return txHash(r);
     },
@@ -182,15 +184,18 @@ export async function withdrawWallet(
 
   const txs: { withdraw?: string; transfer?: string } = {};
   const inVault = await ops.vaultBalanceYocto(accountId);
+  const before = await ops.availableYocto(accountId);
   if (inVault > 0n) txs.withdraw = await ops.vaultWithdraw(accountId, key, inVault);
 
   let sent = 0n;
   if (to) {
-    // The vault pays out in a follow-up receipt; give it a moment to land.
-    let available = 0n;
-    for (let i = 0; i < 6; i++) {
+    // The vault pays out in a follow-up receipt: wait until the balance has actually gone up by
+    // (almost) the withdrawn amount (the withdraw's own gas comes off it), up to ~15 s.
+    const target = before + (inVault * 9n) / 10n;
+    let available = before;
+    for (let i = 0; i < 10; i++) {
       available = await ops.availableYocto(accountId);
-      if (inVault === 0n || available >= inVault) break;
+      if (inVault === 0n || available >= target) break;
       if (!chainOpsOverride) await new Promise((r) => setTimeout(r, 1500));
     }
     const send = available - WITHDRAW_RESERVE_YOCTO;
