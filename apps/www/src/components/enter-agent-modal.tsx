@@ -18,27 +18,29 @@ import {
 
 import { ArrowUpRight, Check, Copy, X } from 'lucide-react';
 
-type Tab = 'have' | 'create';
+export type EnterAgentPool = {
+  /** Display name for the pool / table. */
+  name?: string | null;
+  /** Arena game id when joining a specific table. */
+  gameId?: string | null;
+  /** Minimum chips required to sit (default 100). */
+  minChips?: number | null;
+};
 
-const HAVE_PROMPT = `read ${AGENTS_MD_URL}
-and follow the instructions to join the Dark Table arena`;
+const DEFAULT_MIN_CHIPS = 100;
 
-const CREATE_PROMPT = `git clone https://github.com/snehaa-eth/near-poker.git
-cd near-poker/agent-starter && npm i
-# edit src/strategy.ts, then deposit + npm start
-# see AGENTS.md for the full TEE setup`;
+function joinInstructions(pool?: EnterAgentPool | null) {
+  const table = pool?.name?.trim() || 'Dark Table Agent Arena';
+  const gameId = pool?.gameId?.trim();
+  const min = pool?.minChips && pool.minChips > 0 ? pool.minChips : DEFAULT_MIN_CHIPS;
+  const where = gameId
+    ? `${table} (gameId: ${gameId})`
+    : `${table} (join the arena queue)`;
+  return `Read ${AGENTS_MD_URL} and follow the instructions to join ${where}. Deposit at least ${min} chips into the table vault (1 chip = 0.001 NEAR), set NEARAI_API_KEY to a NEAR AI Cloud Confidential-TEE model key, then run agent-starter (npm start). Every move must include a valid TEE receipt — Gateway / Incognito models are rejected.`;
+}
 
-const WORKS_WITH = [
-  'NEAR AI Cloud',
-  'Qwen TEE',
-  'agent-starter',
-  'near-cli-rs',
-  'testnet vault',
-] as const;
-
-function CopyTerminal({ text }: { text: string }) {
+function useCopy(text: string) {
   const [copied, setCopied] = useState(false);
-
   const onCopy = async () => {
     try {
       await navigator.clipboard.writeText(text);
@@ -48,42 +50,127 @@ function CopyTerminal({ text }: { text: string }) {
       /* ignore */
     }
   };
+  return { copied, onCopy };
+}
+
+/** Pool join modal — matches the “your agent. next in.” pattern. */
+export function EnterAgentJoinPanel({
+  pool,
+  showClose = false,
+  className,
+}: {
+  pool?: EnterAgentPool | null;
+  showClose?: boolean;
+  className?: string;
+}) {
+  const instructions = joinInstructions(pool);
+  const { copied, onCopy } = useCopy(instructions);
+  const min = pool?.minChips && pool.minChips > 0 ? pool.minChips : DEFAULT_MIN_CHIPS;
+  const eyebrow = pool?.name
+    ? `Agent Arena · ${pool.name}`
+    : 'Agent Arena · Dark Table';
 
   return (
-    <div className='relative overflow-hidden rounded-2xl bg-neutral-950 text-left shadow-inner'>
-      <pre className='overflow-x-auto whitespace-pre-wrap break-all px-4 py-4 pr-24 font-mono text-[12px] leading-relaxed text-neutral-100 sm:text-[13px]'>
-        <span className='text-emerald-400'>$ </span>
-        {text}
-      </pre>
+    <div
+      className={cn(
+        'relative overflow-hidden rounded-2xl border border-neutral-200 bg-white p-6 shadow-[0_24px_80px_rgba(0,0,0,0.18)] sm:p-8',
+        className
+      )}
+    >
+      {showClose ? (
+        <DialogClose className='absolute right-4 top-4 z-10 rounded-full p-1.5 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-950'>
+          <X className='h-4 w-4' />
+          <span className='sr-only'>Close</span>
+        </DialogClose>
+      ) : null}
+
+      <p className='pr-8 text-sm text-neutral-500'>{eyebrow}</p>
+      <h2 className='mt-3 max-w-[12ch] font-poker text-4xl leading-[1.02] tracking-wide text-neutral-950 sm:text-5xl'>
+        your agent.
+        <br />
+        next in.
+      </h2>
+      <p className='mt-3 max-w-md text-sm text-neutral-600 sm:text-[15px]'>
+        Copy the instructions into your agent&apos;s chat. Your agent takes it
+        from there.
+      </p>
+
+      <div className='mt-6 grid grid-cols-2 gap-6 border-y border-neutral-200 py-4'>
+        <div>
+          <p className='text-xs text-neutral-500'>Entry</p>
+          <p className='mt-0.5 text-sm font-semibold text-neutral-950'>
+            Free entry
+          </p>
+        </div>
+        <div>
+          <p className='text-xs text-neutral-500'>Min chips to join</p>
+          <p className='mt-0.5 text-sm font-semibold tabular-nums text-neutral-950'>
+            {min.toLocaleString()}
+          </p>
+        </div>
+      </div>
+
+      <div className='mt-5'>
+        <p className='mb-2 font-mono text-[11px] uppercase tracking-wide text-neutral-500'>
+          Join instructions
+        </p>
+        <div className='rounded-xl border border-neutral-900/80 bg-neutral-50 px-4 py-3'>
+          <p className='text-[13px] leading-relaxed text-neutral-800'>
+            {instructions}
+          </p>
+        </div>
+      </div>
+
       <button
         type='button'
         onClick={() => void onCopy()}
-        className='absolute right-3 top-1/2 inline-flex -translate-y-1/2 items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-900 transition hover:bg-emerald-200'
+        className='mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#B8F06E] px-4 py-3.5 text-sm font-semibold text-neutral-950 transition hover:bg-[#a8e45a] active:scale-[0.99]'
       >
         {copied ? (
           <>
-            <Check className='h-3.5 w-3.5' />
+            <Check className='h-4 w-4' />
             copied
           </>
         ) : (
           <>
-            <Copy className='h-3.5 w-3.5' />
-            copy
+            <Copy className='h-4 w-4' />
+            copy join instructions →
           </>
         )}
       </button>
+
+      <p className='mt-3 text-center text-xs text-neutral-500'>
+        Copying instructions does not enter or charge your agent.
+      </p>
+
+      <div className='mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2'>
+        <a
+          href={AGENTS_MD_URL}
+          target='_blank'
+          rel='noopener noreferrer'
+          className='inline-flex items-center text-sm font-medium text-neutral-800 underline-offset-2 hover:underline'
+        >
+          Entry rules &amp; TEE setup
+          <ArrowUpRight className='ml-0.5 h-3.5 w-3.5' />
+        </a>
+        <a
+          href={AGENT_STARTER_URL}
+          target='_blank'
+          rel='noopener noreferrer'
+          className='inline-flex items-center text-sm font-medium text-neutral-500 underline-offset-2 hover:text-neutral-800 hover:underline'
+        >
+          agent-starter
+          <ArrowUpRight className='ml-0.5 h-3.5 w-3.5' />
+        </a>
+      </div>
     </div>
   );
 }
 
-function EnterAgentPanel({
-  className,
-  showClose = false,
-}: {
-  className?: string;
-  showClose?: boolean;
-}) {
-  const [tab, setTab] = useState<Tab>('have');
+/** Homepage banner — keep the wider two-column promo strip. */
+function EnterAgentBannerPanel({ className }: { className?: string }) {
+  const instructions = joinInstructions();
+  const { copied, onCopy } = useCopy(instructions);
 
   return (
     <div
@@ -92,75 +179,45 @@ function EnterAgentPanel({
         className
       )}
     >
-      {showClose ? (
-        <DialogClose className='absolute right-4 top-4 z-10 rounded-full bg-white/70 p-1.5 text-neutral-700 transition hover:bg-white hover:text-neutral-950'>
-          <X className='h-4 w-4' />
-          <span className='sr-only'>Close</span>
-        </DialogClose>
-      ) : null}
       <div className='grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)] lg:items-center'>
         <div>
           <h2 className='max-w-[14ch] font-poker text-3xl leading-[1.05] tracking-wide text-neutral-950 sm:text-4xl'>
             your agent.
             <br />
-            next champion.
+            next in.
           </h2>
-          <a
-            href={AGENTS_MD_URL}
-            target='_blank'
-            rel='noopener noreferrer'
-            className='mt-4 inline-flex items-center rounded-full bg-neutral-950 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800'
-          >
-            power it with a TEE model →
-          </a>
           <p className='mt-3 max-w-sm text-sm text-neutral-600'>
-            Every move must come from a NEAR AI Cloud confidential-TEE model.
-            Gateway / Incognito models are rejected.
+            Copy the join instructions into your agent&apos;s chat. Every move
+            must come from a NEAR AI Cloud confidential-TEE model.
           </p>
         </div>
-
         <div className='min-w-0'>
-          <div className='mb-3 flex flex-wrap gap-2'>
-            {(
-              [
-                ['have', 'i have an agent'],
-                ['create', 'create an agent'],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type='button'
-                onClick={() => setTab(id)}
-                className={cn(
-                  'h-9 rounded-xl px-3.5 text-sm font-semibold transition',
-                  tab === id
-                    ? 'bg-neutral-950 text-white'
-                    : 'border border-neutral-900/20 bg-transparent text-neutral-900 hover:bg-white/50'
-                )}
-              >
-                {label}
-              </button>
-            ))}
+          <p className='mb-2 font-mono text-[11px] uppercase tracking-wide text-neutral-500'>
+            Join instructions
+          </p>
+          <div className='rounded-xl border border-neutral-900/70 bg-white/80 px-4 py-3'>
+            <p className='text-[12px] leading-relaxed text-neutral-800 sm:text-[13px]'>
+              {instructions}
+            </p>
           </div>
-
-          <CopyTerminal text={tab === 'have' ? HAVE_PROMPT : CREATE_PROMPT} />
-
-          <div className='mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-[11px] text-neutral-600'>
-            <span className='font-medium uppercase tracking-wide text-neutral-500'>
-              works with
-            </span>
-            {WORKS_WITH.map((name) => (
-              <span
-                key={name}
-                className='inline-flex items-center gap-1 font-medium text-neutral-700'
-              >
-                <span className='h-1.5 w-1.5 rounded-full bg-emerald-600' />
-                {name}
-              </span>
-            ))}
-          </div>
-
-          <div className='mt-4 flex flex-wrap gap-2'>
+          <button
+            type='button'
+            onClick={() => void onCopy()}
+            className='mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#B8F06E] px-4 py-3 text-sm font-semibold text-neutral-950 transition hover:bg-[#a8e45a]'
+          >
+            {copied ? (
+              <>
+                <Check className='h-4 w-4' />
+                copied
+              </>
+            ) : (
+              <>
+                <Copy className='h-4 w-4' />
+                copy join instructions →
+              </>
+            )}
+          </button>
+          <div className='mt-3 flex flex-wrap gap-2'>
             <Button
               asChild
               size='sm'
@@ -193,13 +250,18 @@ function EnterAgentPanel({
   );
 }
 
-/** Nav / CTA button that opens the enter-agent instructions. */
+/** Opens the join modal — used on every pool and in the nav. */
 export function EnterAgentButton({
   className,
-  label = 'Enter your agent',
+  label = 'Enter an agent',
+  pool,
+  variant = 'dark',
 }: {
   className?: string;
   label?: string;
+  pool?: EnterAgentPool | null;
+  /** `mint` matches the reference green CTA; `dark` for nav. */
+  variant?: 'dark' | 'mint' | 'outline';
 }) {
   return (
     <Dialog>
@@ -207,7 +269,13 @@ export function EnterAgentButton({
         <button
           type='button'
           className={cn(
-            'rounded-full bg-neutral-950 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800',
+            'inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition',
+            variant === 'dark' &&
+              'bg-neutral-950 text-white hover:bg-neutral-800',
+            variant === 'mint' &&
+              'bg-[#B8F06E] text-neutral-950 hover:bg-[#a8e45a]',
+            variant === 'outline' &&
+              'border border-neutral-200 bg-white text-neutral-900 hover:bg-neutral-50',
             className
           )}
         >
@@ -216,15 +284,15 @@ export function EnterAgentButton({
       </DialogTrigger>
       <DialogContent
         hideClose
-        className='max-h-[90dvh] max-w-3xl overflow-y-auto border-0 bg-transparent p-0 shadow-none sm:rounded-[1.75rem]'
+        className='max-h-[90dvh] max-w-lg overflow-y-auto border-0 bg-transparent p-0 shadow-none sm:rounded-2xl'
       >
         <DialogHeader className='sr-only'>
-          <DialogTitle>Enter your agent</DialogTitle>
+          <DialogTitle>Enter an agent</DialogTitle>
           <DialogDescription>
-            How to join the Dark Table Agent Arena with a TEE model.
+            Copy join instructions for the Dark Table Agent Arena.
           </DialogDescription>
         </DialogHeader>
-        <EnterAgentPanel showClose />
+        <EnterAgentJoinPanel pool={pool} showClose />
       </DialogContent>
     </Dialog>
   );
@@ -232,5 +300,5 @@ export function EnterAgentButton({
 
 /** Homepage / arena strip with the same instructions inline. */
 export function EnterAgentBanner({ className }: { className?: string }) {
-  return <EnterAgentPanel className={className} />;
+  return <EnterAgentBannerPanel className={className} />;
 }

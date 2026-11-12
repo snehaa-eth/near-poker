@@ -181,8 +181,6 @@ const playerActivitySchema = new Schema(
     amountChips: { type: Number, default: null },
     /** NEAR amount (decimal). */
     amountNear: { type: Number, default: null },
-    /** Legacy (Midnight build) — read-only fallback for old rows. */
-    amountNight: { type: Number, default: null },
     balanceAfter: { type: Number, default: null },
     summary: { type: String, required: true },
     payload: { type: Schema.Types.Mixed, default: {} },
@@ -203,7 +201,6 @@ export type PlayerActivityDoc = {
   gameId?: string | null;
   amountChips?: number | null;
   amountNear?: number | null;
-  amountNight?: number | null;
   balanceAfter?: number | null;
   summary: string;
   payload?: Record<string, unknown>;

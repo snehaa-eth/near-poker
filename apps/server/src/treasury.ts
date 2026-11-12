@@ -39,22 +39,20 @@ function optionalString(raw: unknown, max = 128): string | null {
   return s.length > 0 && s.length <= max ? s : null;
 }
 
-/** NEAR amount from body: `yocto` (exact) > `nearAmount` > legacy `nightAmount`. */
+/** NEAR amount from body: `yocto` (exact) > `nearAmount`. */
 function parseNearAmount(body: Record<string, unknown> | undefined): number | null {
   const yocto = optionalString(body?.yocto, 40);
   if (yocto && /^\d+$/.test(yocto)) {
     return Number(BigInt(yocto) / YOCTO_PER_CHIP) / CHIPS_PER_NEAR;
   }
-  for (const key of ['nearAmount', 'nightAmount']) {
-    const n = Number(body?.[key]);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
+  const n = Number(body?.nearAmount);
+  if (Number.isFinite(n) && n > 0) return n;
   return null;
 }
 
 treasuryRouter.get('/quote', (req, res) => {
   const chips = Number(req.query.chipsAmount ?? NaN);
-  const near = Number(req.query.nearAmount ?? req.query.nightAmount ?? NaN);
+  const near = Number(req.query.nearAmount ?? NaN);
   if (Number.isFinite(chips) && chips > 0) {
     const c = Math.floor(chips);
     res.json({ chips: c, nearAmount: chipsToNear(c), yocto: (BigInt(c) * YOCTO_PER_CHIP).toString(), chipsPerNear: CHIPS_PER_NEAR });
@@ -123,7 +121,7 @@ treasuryRouter.get('/sync', async (req, res) => {
   }
 });
 
-/** Body: { nearAmount, yocto?, txHash?, nightAmount? (legacy alias) }. */
+/** Body: { nearAmount, yocto?, txHash? }. */
 treasuryRouter.post('/deposit', async (req, res) => {
   try {
     if (isNearChain()) {

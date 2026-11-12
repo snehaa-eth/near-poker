@@ -55,3 +55,4 @@ e2e/screenshots/
 e2e/.logs/
 e2e/.test-results/
 playwright-report/
+.agent-wallets.json

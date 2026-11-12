@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ChipAmount } from '~/components/currency-amount';
 import { playSound } from '~/lib/sounds';
+import { playActionSound } from '~/lib/table-sfx';
 import { useSocket } from '~/providers/socket-provider';
 import { cn, errorHandler } from '~/lib/utils';
 
@@ -63,7 +64,7 @@ export const ActionBar = ({
   }, [canCheck, highestBet, minRaiseTo, sliderMin, stack]);
 
   const applyPreset = (pct: number) => {
-    playSound('gems', 0.45);
+    playSound('cardFlip', 0.4);
     setPreset(pct);
     const next = Math.max(sliderMin, Math.round((stack * pct) / 100));
     setAmount(Math.min(next, sliderMax));
@@ -73,9 +74,9 @@ export const ActionBar = ({
     setPreset(null);
     setAmount(next);
     const now = performance.now();
-    if (now - lastSliderSoundAt.current > 70) {
+    if (now - lastSliderSoundAt.current > 90) {
       lastSliderSoundAt.current = now;
-      playSound('gems', 0.28);
+      playSound('chipsBet', 0.22);
     }
   };
 
@@ -104,15 +105,15 @@ export const ActionBar = ({
   };
 
   const onFold = () => {
-    playSound('paajiLose');
+    playActionSound('fold');
     emit('game:fold', { gameId });
   };
   const onCheck = () => {
-    playSound('bet');
+    playActionSound('check');
     emit('game:bet', { gameId, amount: 0 });
   };
   const onCall = () => {
-    playSound(toCall >= stack ? 'bomb' : 'bet');
+    playActionSound('call', { allIn: toCall >= stack });
     emit('game:bet', { gameId, amount: callTarget });
   };
   const onBetOrRaise = () => {
@@ -124,7 +125,8 @@ export const ActionBar = ({
       );
       return;
     }
-    playSound(amount >= stack + myChipsInPot ? 'bomb' : 'bet');
+    const allIn = amount >= stack + myChipsInPot;
+    playActionSound(canCheck ? 'bet' : 'raise', { allIn });
     emit('game:bet', { gameId, amount });
   };
 

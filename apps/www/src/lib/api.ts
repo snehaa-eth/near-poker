@@ -75,6 +75,11 @@ export type ArenaTable = {
   handsPlayed: number;
   status: string;
   name?: string;
+  /** Minimum vault chips required to join. */
+  minChips?: number;
+  /** Starting blinds for the table (from lobby minChips or live hand). */
+  smallBlind?: number;
+  bigBlind?: number;
 };
 
 /** GET /arena/leaderboard (INTERFACES §5.4). */
@@ -220,8 +225,6 @@ export type PlayerActivityEvent = {
   gameId: string | null;
   amountChips: number | null;
   amountNear?: number | null;
-  /** legacy field name from the Midnight build */
-  amountNight?: number | null;
   balanceAfter: number | null;
   summary: string;
   payload: Record<string, unknown>;
@@ -401,9 +404,8 @@ export const api = {
   getHand: (handId: string) =>
     request<HandRecord>(`/hands/${encodeURIComponent(handId)}`),
   /**
-   * Credit off-chain chips. `nearAmount` is decimal NEAR; `txHash` is the
+   * Credit chips. `nearAmount` is decimal NEAR; `txHash` is the
    * table-vault `deposit()` tx when on-chain (server verifies against chain).
-   * `nightAmount` is sent as a legacy alias until the server is ported.
    */
   treasuryDeposit: (input: {
     nearAmount: number;
@@ -419,7 +421,7 @@ export const api = {
       onChain?: string;
     }>('/treasury/deposit', {
       method: 'POST',
-      body: JSON.stringify({ ...input, nightAmount: input.nearAmount }),
+      body: JSON.stringify(input),
     }),
   treasuryWithdraw: (input: {
     chipsAmount: number;

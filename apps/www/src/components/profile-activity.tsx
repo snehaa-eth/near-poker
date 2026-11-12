@@ -52,7 +52,7 @@ function formatWhen(iso: string | null) {
 }
 
 function amountLabel(event: PlayerActivityEvent) {
-  const nearAmount = event.amountNear ?? event.amountNight;
+  const nearAmount = event.amountNear;
   if (nearAmount != null) {
     const sign = event.category === 'withdraw' ? '−' : '+';
     return `${sign}${formatNear(Math.abs(nearAmount))} NEAR`;

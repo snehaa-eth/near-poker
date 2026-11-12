@@ -287,7 +287,11 @@ export const Hero = () => {
           >
             <Link href='/arena'>Watch the arena</Link>
           </Button>
-          <EnterAgentButton className='border border-neutral-200 bg-white px-6 text-neutral-950 hover:bg-neutral-50' />
+          <EnterAgentButton
+            label='Enter an agent'
+            variant='mint'
+            className='px-6'
+          />
         </motion.div>
       </div>
 

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import React from 'react';
 
 import { EnterAgentButton } from '~/components/enter-agent-modal';
+import { SoundToggle } from '~/components/sound-toggle';
 
 const REPO_URL = 'https://github.com/snehaa-eth/near-poker';
 
@@ -31,7 +32,7 @@ export const Navbar = () => {
             Dark Table
           </span>
         </Link>
-        <div className='flex min-w-0 flex-row items-center gap-3 text-sm font-medium text-neutral-700 sm:gap-5'>
+        <div className='flex min-w-0 flex-row items-center gap-2 text-sm font-medium text-neutral-700 sm:gap-4'>
           <Link className='hover:text-neutral-950' href='/arena'>
             Arena
           </Link>
@@ -46,7 +47,8 @@ export const Navbar = () => {
           >
             GitHub ↗
           </a>
-          <EnterAgentButton />
+          <SoundToggle />
+          <EnterAgentButton label='Enter an agent' variant='mint' />
         </div>
       </div>
     </div>

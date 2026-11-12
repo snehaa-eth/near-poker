@@ -2,14 +2,20 @@
 
 import Link from 'next/link';
 
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 
-import type { PublicGameView } from '~/lib/api';
+import type { ArenaMoveRecord, PublicGameView } from '~/lib/api';
 import { formatTokens } from '~/lib/format';
+import type { SeatActionFlash } from '~/lib/seat-action-flash';
+import { playSound, preloadSounds } from '~/lib/sounds';
 import { cn } from '~/lib/utils';
 
 import { HowToWatch } from '~/app/game/[id]/_components/table-guide';
 import { SleekTable } from '~/app/game/[id]/_components/sleek-table';
+
+import { ChipAmount } from '~/components/currency-amount';
+import { EnterAgentButton } from '~/components/enter-agent-modal';
+import { SoundToggle } from '~/components/sound-toggle';
 
 import { ArenaMoveFeed } from './arena-move-feed';
 import { ArenaSidebar } from './arena-sidebar';
@@ -56,6 +62,42 @@ export function ArenaSpectator({
         : 'Hand over'
       : view.roundLabel || view.street || view.round || '—';
 
+  const [actionFlashes, setActionFlashes] = useState<
+    Record<string, SeatActionFlash>
+  >({});
+
+  const onArenaMove = useCallback((move: ArenaMoveRecord) => {
+    // Prefer nickname match when playerId from the feed is a wallet / session id.
+    const byId = move.playerId;
+    const byNick = move.nickname
+      ? view.players.find(
+          (p) => p.nickname.toLowerCase() === move.nickname!.toLowerCase()
+        )?.id
+      : null;
+    const seatId = byNick || byId;
+    if (!seatId) return;
+    setActionFlashes((cur) => ({
+      ...cur,
+      [seatId]: {
+        id: `${move.completionId}-${move.action}`,
+        action: move.action,
+        amount: move.amount,
+      },
+    }));
+  }, [view.players]);
+
+  // Mock tables: unlock / warm the audio graph on first click so Pepper SFX play.
+  useEffect(() => {
+    if (!mock) return;
+    preloadSounds();
+    const unlock = () => {
+      playSound('cardFlip', 0.01);
+      window.removeEventListener('pointerdown', unlock);
+    };
+    window.addEventListener('pointerdown', unlock, { once: true });
+    return () => window.removeEventListener('pointerdown', unlock);
+  }, [mock]);
+
   return (
     <div className='min-h-[100dvh] bg-[#F4F5F7] pt-16'>
       <div className='mx-auto grid max-w-[90rem] gap-4 px-3 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start xl:grid-cols-[minmax(0,1fr)_22rem]'>
@@ -74,17 +116,39 @@ export function ArenaSpectator({
             <HudChip>Table {view.name || gameId.slice(0, 8)}</HudChip>
             <HudChip tone='street'>{street}</HudChip>
             <HudChip tone='pot'>Pot {formatTokens(view.pot)}</HudChip>
+            {view.minChips > 0 ? (
+              <span className='inline-flex h-7 items-center gap-1.5 rounded-md bg-neutral-100 px-2 text-[11px] font-bold text-neutral-700'>
+                Min
+                <ChipAmount
+                  value={view.minChips}
+                  size='sm'
+                  className='text-[11px] font-bold text-neutral-800'
+                  iconClassName='h-3.5 w-3.5'
+                />
+              </span>
+            ) : null}
             {handId ? (
               <span className='font-mono text-[11px] leading-7 text-neutral-500'>
                 hand {handId.slice(0, 10)}
               </span>
             ) : null}
-            <div className='ml-auto flex items-center gap-2'>
+            <div className='ml-auto flex flex-wrap items-center gap-2'>
+              <SoundToggle className='h-7' />
               <span className='inline-flex h-7 items-center gap-1 text-[11px] font-medium text-emerald-700'>
                 <ShieldCheck className='h-3.5 w-3.5' />
                 TEE moves only
               </span>
               <HowToWatch />
+              <EnterAgentButton
+                label='Enter an agent'
+                variant='mint'
+                className='h-7 px-3 text-xs'
+                pool={{
+                  name: view.name || 'Arena table',
+                  gameId,
+                  minChips: view.minChips || 100,
+                }}
+              />
             </div>
           </div>
 
@@ -94,6 +158,7 @@ export function ArenaSpectator({
               view={view}
               embedded
               showPositions
+              actionFlashes={actionFlashes}
             />
           </div>
 
@@ -102,6 +167,7 @@ export function ArenaSpectator({
             mock={mock}
             nextPlayerNickname={view.nextPlayerNickname}
             defaultOpen
+            onMove={onArenaMove}
           />
         </div>
 

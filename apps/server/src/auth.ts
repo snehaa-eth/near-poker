@@ -357,9 +357,7 @@ authRouter.get('/activity', async (req, res) => {
       type: doc.type,
       gameId: doc.gameId ?? null,
       amountChips: doc.amountChips ?? null,
-      amountNear: doc.amountNear ?? doc.amountNight ?? null,
-      /** @deprecated legacy alias of amountNear */
-      amountNight: doc.amountNear ?? doc.amountNight ?? null,
+      amountNear: doc.amountNear ?? null,
       balanceAfter: doc.balanceAfter ?? null,
       summary: doc.summary,
       payload: doc.payload ?? {},

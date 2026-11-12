@@ -4,6 +4,11 @@ import React, { useEffect, useState } from 'react';
 
 import type { AgentInfo, BotInfo } from '~/lib/api';
 import { shortModel } from '~/lib/arena';
+import {
+  actionFlashLabel,
+  actionFlashTone,
+  type SeatActionFlash,
+} from '~/lib/seat-action-flash';
 import { cn } from '~/lib/utils';
 
 import { ChipAmount } from '~/components/currency-amount';
@@ -19,6 +24,8 @@ import { ArrowUpRight } from 'lucide-react';
 
 /** How long an agent's table talk stays on screen. */
 const SPEECH_MS = 5000;
+/** How long the fold/call/raise toast stays over the seat name. */
+const ACTION_FLASH_MS = 1400;
 
 export type SeatPlayer = {
   id: string;
@@ -160,6 +167,9 @@ function useSpeech(line?: string) {
   return visible;
 }
 
+/** Where the seat sits on the oval — drives card/bet direction toward center. */
+export type SeatAnchor = 'bottom' | 'top' | 'left' | 'right';
+
 interface PlayerSeatProps {
   player: SeatPlayer;
   isMe: boolean;
@@ -173,11 +183,15 @@ interface PlayerSeatProps {
   positionLabel?: string | null;
   /** Narrower seat pill for the arena spectator shell. */
   compact?: boolean;
+  /** Table-side anchor so hole cards / bets face the felt, not the rail. */
+  anchor?: SeatAnchor;
   stack: number;
   avatarUrl?: string | null;
   style?: React.CSSProperties;
   /** Remaining seconds on this seat’s turn clock. */
   turnSecondsLeft?: number | null;
+  /** Ephemeral fold / call / raise toast over the agent name. */
+  actionFlash?: SeatActionFlash | null;
 }
 
 function formatClock(seconds: number) {
@@ -205,21 +219,218 @@ export const PlayerSeat = ({
   winningHand,
   positionLabel = null,
   compact = false,
+  anchor = 'bottom',
   stack,
   avatarUrl,
   style,
   turnSecondsLeft = null,
+  actionFlash = null,
 }: PlayerSeatProps) => {
-  const cards = player.holeCards.length > 0 ? player.holeCards : [];
+  const cards = player.folded
+    ? []
+    : player.holeCards.length > 0
+      ? player.holeCards
+      : [];
   const urgent = turnSecondsLeft != null && turnSecondsLeft <= 15;
   const speech = useSpeech(player.bot?.lastLine);
+  const showStreetBet = !player.folded && player.chipsInPot > 0;
+  const [flashVisible, setFlashVisible] = useState<SeatActionFlash | null>(
+    null
+  );
+
+  useEffect(() => {
+    if (!actionFlash) return;
+    setFlashVisible(actionFlash);
+    const t = window.setTimeout(() => setFlashVisible(null), ACTION_FLASH_MS);
+    return () => window.clearTimeout(t);
+  }, [actionFlash]);
+
+  const holeCards =
+    cards.length > 0 ? (
+      <div className='relative flex h-auto items-end justify-center'>
+        {cards.slice(0, 2).map((c, i) => (
+          <SleekCard
+            key={`${player.id}-c-${i}`}
+            cardId={isMe ? c : c < 0 ? -1 : c}
+            backSeed={player.seat * 2 + i}
+            className={cn(
+              i === 0 ? '-mr-2 -rotate-[8deg]' : '-ml-2 rotate-[8deg]',
+              isMe && 'hover:-translate-y-1'
+            )}
+            size={compact ? 'sm' : isMe ? 'md' : 'sm'}
+          />
+        ))}
+      </div>
+    ) : null;
+
+  const streetBet = showStreetBet ? (
+    <div className='rounded-full bg-white/95 px-2 py-0.5 shadow-sm ring-1 ring-black/5'>
+      <ChipAmount
+        value={player.chipsInPot}
+        size='sm'
+        className='text-[11px] font-semibold text-neutral-700'
+        iconClassName='h-3.5 w-3.5'
+      />
+    </div>
+  ) : null;
+
+  const seatPill = (
+    <div className='relative'>
+      {flashVisible ? (
+        <div
+          key={flashVisible.id}
+          role='status'
+          className={cn(
+            'pointer-events-none absolute left-1/2 z-40 -translate-x-1/2 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide shadow-lg animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-1',
+            'duration-200',
+            compact ? '-top-7 text-[9px]' : '-top-8 lg:-top-9 lg:text-[11px]',
+            actionFlashTone(flashVisible.action)
+          )}
+        >
+          {actionFlashLabel(flashVisible)}
+        </div>
+      ) : null}
+      {isDealer ? (
+        <div
+          className={cn(
+            'absolute z-10 flex -translate-y-1/2 items-center justify-center rounded-full bg-neutral-950 font-bold text-white shadow',
+            compact
+              ? '-left-3 top-1/2 h-4 w-4 text-[9px]'
+              : '-left-3.5 top-1/2 h-5 w-5 text-[10px] lg:h-6 lg:w-6 lg:text-xs'
+          )}
+        >
+          D
+        </div>
+      ) : null}
+      <div
+        className={cn(
+          'flex items-center border bg-white/95 shadow-[0_4px_20px_rgba(0,0,0,0.06)] backdrop-blur',
+          compact
+            ? 'max-w-[9.75rem] gap-1.5 rounded-2xl py-1 pl-1 pr-2'
+            : 'gap-2 rounded-full py-1.5 pl-1.5 pr-3.5 lg:py-2 lg:pl-2 lg:pr-4',
+          isWinner
+            ? 'border-amber-400 ring-[3px] ring-amber-300/60'
+            : isTurn
+              ? 'border-[#1D9BF0] ring-[3px] ring-[#1D9BF0]/15'
+              : isMe
+                ? 'border-neutral-300'
+                : 'border-neutral-200/90',
+          flashVisible && 'ring-[3px] ring-white/40'
+        )}
+      >
+        {avatarUrl ? (
+          <div
+            className={cn(
+              'shrink-0 overflow-hidden rounded-full bg-neutral-100',
+              compact ? 'h-7 w-7' : 'h-8 w-8 lg:h-9 lg:w-9'
+            )}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={avatarUrl}
+              alt=''
+              className='h-full w-full object-cover'
+            />
+          </div>
+        ) : (
+          <div
+            className={cn(
+              'flex shrink-0 items-center justify-center rounded-full font-semibold text-white',
+              compact ? 'h-7 w-7 text-xs' : 'h-8 w-8 text-sm lg:h-9 lg:w-9'
+            )}
+            style={{ background: avatarColor(player.nickname) }}
+          >
+            {player.nickname.slice(0, 1).toUpperCase()}
+          </div>
+        )}
+        <div className='min-w-0 flex-1 leading-tight'>
+          <div className='flex min-w-0 items-center gap-1'>
+            <span
+              className={cn(
+                'truncate font-semibold text-neutral-900',
+                compact
+                  ? 'text-[11px]'
+                  : 'max-w-[6.5rem] text-[12px] lg:max-w-[8rem] lg:text-[13px]'
+              )}
+            >
+              {isMe ? `${player.nickname} (you)` : player.nickname}
+            </span>
+            {positionLabel ? (
+              <span className='shrink-0 rounded bg-neutral-900 px-1 py-[1px] text-[9px] font-bold uppercase tracking-wide text-white'>
+                {positionLabel}
+              </span>
+            ) : null}
+            {!compact && player.agent ? (
+              <AgentBadge agent={player.agent} compact />
+            ) : !compact && player.bot ? (
+              <BotBadge bot={player.bot} />
+            ) : null}
+          </div>
+          <div className='mt-0.5 flex min-w-0 items-center gap-1 text-[10px] text-neutral-500'>
+            <ChipAmount
+              // `stack` is already the remaining stack (street bet deducted).
+              value={Math.max(stack, 0)}
+              size='sm'
+              className='text-[10px] font-normal text-neutral-500'
+              iconClassName='h-3 w-3'
+            />
+            {player.folded ? (
+              <span className='font-semibold uppercase tracking-wide text-neutral-400'>
+                folded
+              </span>
+            ) : null}
+            {compact && player.agent ? (
+              <AgentBadge agent={player.agent} compact />
+            ) : compact && player.bot ? (
+              <BotBadge bot={player.bot} />
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const statusBits = (
+    <>
+      {isWinner ? (
+        <div className='rounded-full bg-amber-400 px-2.5 py-0.5 text-[11px] font-semibold text-neutral-950 shadow'>
+          🏆 Winner{winningHand ? ` · ${winningHand}` : ''}
+        </div>
+      ) : null}
+      {isTurn ? (
+        <div
+          className={cn(
+            'rounded-full px-2 py-0.5 text-[10px] font-medium tabular-nums shadow-sm',
+            urgent
+              ? 'animate-pulse bg-red-500/90 text-white'
+              : 'bg-[#1D9BF0]/95 text-white'
+          )}
+        >
+          {turnSecondsLeft != null ? formatClock(turnSecondsLeft) : '•••'} to
+          act
+        </div>
+      ) : null}
+    </>
+  );
+
+  // Cards + street bet always face the felt; pill sits on the rail.
+  const towardCenter = (
+    <>
+      {holeCards}
+      {streetBet}
+    </>
+  );
 
   return (
     <div
       className={cn(
-        'absolute z-20 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center transition-opacity',
-        compact ? 'gap-1' : 'gap-1.5 lg:gap-2',
-        player.folded && 'opacity-45'
+        'absolute z-20 flex -translate-x-1/2 -translate-y-1/2 items-center transition-opacity',
+        compact ? 'gap-1' : 'gap-1.5',
+        player.folded && 'opacity-40',
+        anchor === 'bottom' && 'flex-col',
+        anchor === 'top' && 'flex-col-reverse',
+        anchor === 'left' && 'flex-row',
+        anchor === 'right' && 'flex-row-reverse'
       )}
       style={style}
     >
@@ -232,149 +443,11 @@ export const PlayerSeat = ({
           <span className='absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1 rotate-45 bg-white ring-0' />
         </div>
       ) : null}
-      {cards.length > 0 ? (
-        <div className='mb-0.5 flex items-end gap-1 lg:gap-1.5'>
-          {cards.slice(0, 2).map((c, i) => (
-            <SleekCard
-              key={`${player.id}-c-${i}`}
-              cardId={isMe ? c : c < 0 ? -1 : c}
-              className={cn(
-                'shadow-[0_6px_16px_rgba(0,0,0,0.08)]',
-                isMe && 'hover:-translate-y-1',
-                i === 0 ? '-rotate-6' : 'rotate-6'
-              )}
-              size={compact ? 'sm' : isMe ? 'lg' : 'sm'}
-            />
-          ))}
-        </div>
-      ) : null}
-
-      {player.chipsInPot > 0 ? (
-        <div className='rounded-full bg-white px-2 py-0.5 shadow-sm'>
-          <ChipAmount
-            value={player.chipsInPot}
-            size='sm'
-            className='text-[11px] font-semibold text-neutral-700'
-            iconClassName='h-3.5 w-3.5'
-          />
-        </div>
-      ) : null}
-
-      <div className='relative'>
-        {isDealer ? (
-          <div
-            className={cn(
-              'absolute z-10 flex -translate-y-1/2 items-center justify-center rounded-full bg-neutral-950 font-bold text-white shadow',
-              compact
-                ? '-left-3 top-1/2 h-4 w-4 text-[9px]'
-                : '-left-3.5 top-1/2 h-5 w-5 text-[10px] lg:h-6 lg:w-6 lg:text-xs'
-            )}
-          >
-            D
-          </div>
-        ) : null}
-        <div
-          className={cn(
-            'flex items-center border bg-white/95 shadow-[0_4px_20px_rgba(0,0,0,0.06)] backdrop-blur',
-            compact
-              ? 'max-w-[9.75rem] gap-1.5 rounded-2xl py-1 pl-1 pr-2'
-              : 'gap-2 rounded-full py-1.5 pl-1.5 pr-3.5 lg:py-2 lg:pl-2 lg:pr-4',
-            isWinner
-              ? 'border-amber-400 ring-[3px] ring-amber-300/60'
-              : isTurn
-                ? 'border-[#1D9BF0] ring-[3px] ring-[#1D9BF0]/15'
-                : isMe
-                  ? 'border-neutral-300'
-                  : 'border-neutral-200/90'
-          )}
-        >
-          {avatarUrl ? (
-            <div
-              className={cn(
-                'shrink-0 overflow-hidden rounded-full bg-neutral-100',
-                compact ? 'h-7 w-7' : 'h-9 w-9 lg:h-10 lg:w-10'
-              )}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={avatarUrl}
-                alt=''
-                className='h-full w-full object-cover'
-              />
-            </div>
-          ) : (
-            <div
-              className={cn(
-                'flex shrink-0 items-center justify-center rounded-full font-semibold text-white',
-                compact ? 'h-7 w-7 text-xs' : 'h-9 w-9 text-sm lg:h-10 lg:w-10'
-              )}
-              style={{ background: avatarColor(player.nickname) }}
-            >
-              {player.nickname.slice(0, 1).toUpperCase()}
-            </div>
-          )}
-          <div className='min-w-0 flex-1 leading-tight'>
-            <div className='flex min-w-0 items-center gap-1'>
-              <span
-                className={cn(
-                  'truncate font-semibold text-neutral-900',
-                  compact ? 'text-[11px]' : 'max-w-[7.5rem] text-[13px] lg:max-w-[9rem] lg:text-sm'
-                )}
-              >
-                {isMe ? `${player.nickname} (you)` : player.nickname}
-              </span>
-              {positionLabel ? (
-                <span className='shrink-0 rounded bg-neutral-900 px-1 py-[1px] text-[9px] font-bold uppercase tracking-wide text-white'>
-                  {positionLabel}
-                </span>
-              ) : null}
-              {!compact && player.agent ? (
-                <AgentBadge agent={player.agent} />
-              ) : !compact && player.bot ? (
-                <BotBadge bot={player.bot} />
-              ) : null}
-            </div>
-            <div className='mt-0.5 flex min-w-0 items-center gap-1 text-[10px] text-neutral-500'>
-              <ChipAmount
-                value={Math.max(stack - player.chipsInPot, 0)}
-                size='sm'
-                className='text-[10px] font-normal text-neutral-500'
-                iconClassName='h-3 w-3'
-              />
-              {player.folded ? (
-                <span className='font-semibold uppercase tracking-wide text-neutral-400'>
-                  folded
-                </span>
-              ) : null}
-              {compact && player.agent ? (
-                <AgentBadge agent={player.agent} compact />
-              ) : compact && player.bot ? (
-                <BotBadge bot={player.bot} />
-              ) : null}
-            </div>
-          </div>
-        </div>
+      {towardCenter}
+      <div className='flex flex-col items-center gap-1'>
+        {seatPill}
+        {statusBits}
       </div>
-
-      {isWinner ? (
-        <div className='rounded-full bg-amber-400 px-2.5 py-0.5 text-[11px] font-semibold text-neutral-950 shadow'>
-          🏆 Winner{winningHand ? ` · ${winningHand}` : ''}
-        </div>
-      ) : null}
-
-      {isTurn ? (
-        <div
-          className={cn(
-            'flex items-center gap-1 text-[10px] font-medium tabular-nums',
-            urgent ? 'animate-pulse text-red-500' : 'text-[#1D9BF0]'
-          )}
-        >
-          <span>
-            {turnSecondsLeft != null ? formatClock(turnSecondsLeft) : '•••'}
-          </span>
-          <span className='font-normal opacity-80'>to act</span>
-        </div>
-      ) : null}
     </div>
   );
 };
@@ -383,44 +456,44 @@ export const PlayerSeat = ({
 export function seatPositions(
   count: number,
   opts?: { inset?: boolean }
-): Array<{ left: string; top: string }> {
+): Array<{ left: string; top: string; anchor: SeatAnchor }> {
   const inset = Boolean(opts?.inset);
   if (count <= 2) {
     return [
-      { left: '50%', top: inset ? '84%' : '90%' },
-      { left: '50%', top: inset ? '16%' : '10%' },
+      { left: '50%', top: inset ? '86%' : '88%', anchor: 'bottom' },
+      { left: '50%', top: inset ? '14%' : '12%', anchor: 'top' },
     ];
   }
   if (count === 3) {
     return [
-      { left: '50%', top: inset ? '84%' : '90%' },
-      { left: inset ? '16%' : '10%', top: '38%' },
-      { left: inset ? '84%' : '90%', top: '38%' },
+      { left: '50%', top: inset ? '86%' : '88%', anchor: 'bottom' },
+      { left: inset ? '12%' : '10%', top: '42%', anchor: 'left' },
+      { left: inset ? '88%' : '90%', top: '42%', anchor: 'right' },
     ];
   }
   if (count === 4) {
     return [
-      { left: '50%', top: inset ? '84%' : '90%' },
-      { left: inset ? '14%' : '8%', top: '48%' },
-      { left: '50%', top: inset ? '16%' : '10%' },
-      { left: inset ? '86%' : '92%', top: '48%' },
+      { left: '50%', top: inset ? '86%' : '88%', anchor: 'bottom' },
+      { left: inset ? '11%' : '9%', top: '50%', anchor: 'left' },
+      { left: '50%', top: inset ? '14%' : '12%', anchor: 'top' },
+      { left: inset ? '89%' : '91%', top: '50%', anchor: 'right' },
     ];
   }
   if (count === 5) {
     return [
-      { left: '50%', top: inset ? '84%' : '90%' },
-      { left: inset ? '14%' : '8%', top: '58%' },
-      { left: inset ? '20%' : '16%', top: inset ? '20%' : '16%' },
-      { left: inset ? '80%' : '84%', top: inset ? '20%' : '16%' },
-      { left: inset ? '86%' : '92%', top: '58%' },
+      { left: '50%', top: inset ? '86%' : '88%', anchor: 'bottom' },
+      { left: inset ? '11%' : '9%', top: '58%', anchor: 'left' },
+      { left: inset ? '18%' : '14%', top: inset ? '18%' : '16%', anchor: 'top' },
+      { left: inset ? '82%' : '86%', top: inset ? '18%' : '16%', anchor: 'top' },
+      { left: inset ? '89%' : '91%', top: '58%', anchor: 'right' },
     ];
   }
   return [
-    { left: '50%', top: inset ? '84%' : '90%' },
-    { left: inset ? '15%' : '10%', top: inset ? '64%' : '68%' },
-    { left: inset ? '15%' : '10%', top: inset ? '30%' : '26%' },
-    { left: '50%', top: inset ? '14%' : '8%' },
-    { left: inset ? '85%' : '90%', top: inset ? '30%' : '26%' },
-    { left: inset ? '85%' : '90%', top: inset ? '64%' : '68%' },
+    { left: '50%', top: inset ? '86%' : '88%', anchor: 'bottom' },
+    { left: inset ? '11%' : '9%', top: inset ? '66%' : '68%', anchor: 'left' },
+    { left: inset ? '11%' : '9%', top: inset ? '30%' : '28%', anchor: 'left' },
+    { left: '50%', top: inset ? '12%' : '10%', anchor: 'top' },
+    { left: inset ? '89%' : '91%', top: inset ? '30%' : '28%', anchor: 'right' },
+    { left: inset ? '89%' : '91%', top: inset ? '66%' : '68%', anchor: 'right' },
   ];
 }

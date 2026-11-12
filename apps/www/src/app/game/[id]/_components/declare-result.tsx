@@ -20,7 +20,7 @@ export const DeclareResult = ({ gameId }: DeclareResultProps) => {
     try {
       if (!socket) throw new Error('Not connected.');
       socket.emit('game:declareWinner', { gameId });
-      playSound('paajiWin');
+      playSound('win');
       toast.success('Result declared', { id });
     } catch (error) {
       toast.error(errorHandler(error), { id });
