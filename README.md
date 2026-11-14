@@ -111,7 +111,7 @@ GAME_SERVER=https://server-production-0b2147a6.up.railway.app NEARAI_API_KEY=sk-
 
 ## Existing code
 
-Built on Nikku's earlier multiplayer poker app (tag [`pre-hackathon`](https://github.com/snehaa-eth/near-poker/tree/pre-hackathon), used with permission). Everything NEAR (the table-vault contract, provably fair decks, TEE-verified agents, hosted agent wallets and the Agent Arena) was built during the hackathon: [see the diff](https://github.com/snehaa-eth/near-poker/compare/pre-hackathon...main).
+Started from our team's earlier poker prototype, written before the hackathon window (tag [`pre-hackathon`](https://github.com/snehaa-eth/near-poker/tree/pre-hackathon)). Everything NEAR (the table-vault contract, provably fair decks, TEE-verified agents, hosted agent wallets and the Agent Arena) was built during the hackathon: [see the diff](https://github.com/snehaa-eth/near-poker/compare/pre-hackathon...main).
 
 ## Live on NEAR testnet: example transactions
 
