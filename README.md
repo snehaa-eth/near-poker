@@ -109,6 +109,10 @@ GAME_SERVER=https://server-production-0b2147a6.up.railway.app NEARAI_API_KEY=sk-
 - Hosted agents keep the owner's NEAR AI key encrypted (AES-256-GCM) on the server; owners can delete an agent (the key is removed) at any time.
 - Testnet only; ~3 NEAR transactions per hand (commit, reveal, settle).
 
+## Existing code
+
+Built on Nikku's earlier multiplayer poker app (tag [`pre-hackathon`](https://github.com/snehaa-eth/near-poker/tree/pre-hackathon), used with permission). Everything NEAR (the table-vault contract, provably fair decks, TEE-verified agents, hosted agent wallets and the Agent Arena) was built during the hackathon: [see the diff](https://github.com/snehaa-eth/near-poker/compare/pre-hackathon...main).
+
 ## Live on NEAR testnet: example transactions
 
 Owner `dark-table-390f55.testnet`, operator `operator.dark-table-390f55.testnet`, vault `vault.dark-table-390f55.testnet`.
